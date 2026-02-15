@@ -1,61 +1,199 @@
 `default_nettype none
 
 module processor #(
-    parameter INIT = ""
+    parameter MEM_INIT = "memory.mem"
 ) (
     input logic clock,
     input logic reset
 );
-    logic [6:0] counter;
+    // Machine States
+    typedef enum { 
+        HALT,
+        INIT,
+        FETCH,
+        DECODE,
+        EXECUTE,
+        MEMORY,
+        WRITE_BACK
+    } state_t;
 
-    logic [31:0] data_out;
+    // Current and next states
+    state_t state, next_state;
+
+    // Program counter
+    logic [31:0] PC, next_PC;
+
+    // Memory register
+    logic write_enable = 0;
     logic read_enable = 0;
+    logic [31:0] write_data = 0;
 
+    // Instruction
+    logic [31:0] instr;
+
+    // Instruction type outputs
+    logic isALUreg, isALUimm, isLoad, isStore, isLUI, isAUIPC, isJAL;
+    logic isJALR, isSYSTEM, isBranch;
+
+    // Register addresses
+    logic [4:0] rd, rs1, rs2; 
+
+    // Function codes
+    logic [2:0] funct3;
+    logic [6:0] funct7;
+
+    // Immediates
+    logic [31:0] Iimm, Simm, Bimm, Uimm, Jimm;
+
+    // Register File Data
+    logic [31:0] rs1_data, rs2_data;
+    logic reg_write_en;
+    logic [31:0] reg_write_data;
+
+    // ALU output
+    logic [31:0] aluOut;
+
+    // Bram memory
     bram_sdp #(
     .WIDTH(32), 
     .DEPTH(128),
-    .INIT("memory.mem")
+    .INIT(MEM_INIT)
     ) bram_inst (
+    .clock_write(clock),
     .clock_read(clock),
+    .write_enable(write_enable),
     .read_enable(read_enable),
-    .addr_read(counter),
-    .data_out(data_out)
+    .addr_write(PC[8:2]),       // since the depth = 128
+    .addr_read(PC[8:2]),
+    .data_in(write_data),
+    .data_out(instr)
     );
 
-    always_ff @(posedge clock, posedge reset) 
-    begin
-        if (reset)
-        begin
-            read_enable <= 1;
-            counter <= 0;
-        end
-        else 
-        begin
-            counter <= counter + 1;
+    // Decoder 
+    decoder decoder_isnt (
+    .instr,
+    .isALUreg,
+    .isALUimm,
+    .isLoad,
+    .isStore,
+    .isLUI,
+    .isAUIPC,
+    .isJAL,
+    .isJALR,
+    .isSYSTEM,
+    .isBranch,
+    .rd,
+    .rs1,
+    .rs2,
+    .funct3,
+    .funct7,
+    .Iimm,
+    .Simm,
+    .Bimm,
+    .Uimm,
+    .Jimm
+    );
 
-            if (counter == 73)
-                counter <= 0;
+    // Register File
+    register_file #(
+        .WIDTH(32),
+        .DEPTH(32)
+    ) register_file_inst (
+        .clock(clock),
+        .reset(reset),
+        .rs1_addr(rs1),
+        .rs1_data(rs1_data),
+        .rs2_addr(rs2),
+        .rs2_data(rs2_data),
+        .write_en(reg_write_en),
+        .write_data(reg_write_data),
+        .rd_addr(rd)
+    );
 
-            $display("Instruction opcode %b", data_out[6:0]); // print the opcode of the instuction
-        end
-    end 
+    // ALU instantiation
+    alu #(
+        .WIDTH(32)
+    ) alu_inst (
+        .rs1_data,
+        .rs2_data,
+        .Iimm,
+        .funct3,
+        .funct7,
+        .isALUreg,
+        .aluOut
+    );
 
-
+    // Start on reset; otherwise, change states
     always_ff @(posedge clock)
     begin
-            case (1'b1)
-                (data_out[6:0] == 7'b0110011) : $display("PC=%d ALUreg", counter);
-                (data_out[6:0] == 7'b0010011) : $display("PC=%d ALUimm", counter);
-                (data_out[6:0] == 7'b1100011) : $display("PC=%d BRANCH", counter);
-                (data_out[6:0] == 7'b1101111) : $display("PC=%d JAL", counter);
-                (data_out[6:0] == 7'b1100111) : $display("PC=%d JALR", counter);
-                (data_out[6:0] == 7'b0010111) : $display("PC=%d AUIPC", counter);
-                (data_out[6:0] == 7'b0110111) : $display("PC=%d LUI", counter);
-                (data_out[6:0] == 7'b0000011) : $display("PC=%d LOAD", counter);
-                (data_out[6:0] == 7'b0100011) : $display("PC=%d STORE", counter);
-                (data_out[6:0] == 7'b1110011) : $display("PC=%d SYSTEM", counter);
-            endcase
+        if (reset) begin
+            state <= INIT;
+            PC <= 32'b0;
+        end
+        else begin
+            state <= next_state;
+            PC <= next_PC;
+
+
+        end
     end
 
+    always_comb begin
+        next_PC = PC;
+        next_state = state;
+
+        // Memory
+        read_enable = 0;
+        write_enable = 0;
+        write_data = 32'b0;
+
+        // Register File
+        reg_write_en = 0;
+        reg_write_data = 32'b0;
+
+        case(state)
+        HALT : begin
+            next_state = HALT;
+        end
+        INIT : begin
+            next_state = FETCH;
+        end
+        FETCH : begin
+            read_enable = 1;
+            next_state = DECODE;
+        end
+        DECODE : begin
+            next_state = EXECUTE;
+        end
+        EXECUTE : begin
+            next_state = MEMORY;
+
+        // Print OPCODES for the sake of simulation
+        case (1'b1)
+            isALUreg : $display("PC=%d ALUreg", PC);
+            isALUimm: $display("PC=%d ALUimm", PC);
+            isBranch : $display("PC=%d BRANCH", PC);
+            isJAL : $display("PC=%d JAL", PC);
+            isJALR : $display("PC=%d JALR", PC);
+            isAUIPC : $display("PC=%d AUIPC", PC);
+            isLUI : $display("PC=%d LUI", PC);
+            isLoad : $display("PC=%d LOAD", PC);
+            isStore : $display("PC=%d STORE", PC);
+            isSYSTEM : $display("PC=%d SYSTEM", PC);
+        endcase
+        end
+        MEMORY : begin
+            next_state = WRITE_BACK;
+        end
+        WRITE_BACK : begin
+            next_PC = PC + 4;
+            next_state = FETCH;
+
+            if (PC == 'd292)
+                next_state = HALT;
+        end
+        default: next_state = HALT;
+        endcase
+    end
 
 endmodule
