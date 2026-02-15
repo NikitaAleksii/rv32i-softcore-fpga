@@ -17,7 +17,7 @@ module execution_tb();
     logic reset;
 
     processor #(
-        .INIT(MEMORY_INIT)
+        .MEM_INIT(MEMORY_INIT)
     ) processor_inst (
         .clock,
         .reset
@@ -31,7 +31,7 @@ module execution_tb();
 
         // Apply reset
         reset = 1;
-        @(posedge clock);
+        #100;
         reset = 0;
 
         #10000000; // Run for 10 ms max

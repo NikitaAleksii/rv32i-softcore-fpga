@@ -9,7 +9,7 @@ PCF_FILE	?= pinmap.pcf
 
 TOP			?= execution_tb
 TOP_TB		?= execution_tb
-MODULES		?= processor.sv bram_sdp.sv decoder.sv
+MODULES		?= processor.sv bram_sdp.sv decoder.sv alu.sv register_file.sv
 MODULES_TB	?= execution_tb.sv 
 
 # Use yosys to perform synthesis
