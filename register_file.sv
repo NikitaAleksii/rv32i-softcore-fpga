@@ -19,7 +19,8 @@ module register_file #(
 );
     // Internal Storage; x0 is special
     logic [WIDTH-1:0] registers [1:DEPTH-1]; 
-
+    integer i;
+    
     // Read logic
     assign rs1_data = (rs1_addr == 5'b0) ? 0 : registers[rs1_addr];
     assign rs2_data = (rs2_addr == 5'b0) ? 0 : registers[rs2_addr];
@@ -28,7 +29,10 @@ module register_file #(
     always_ff @(posedge clock)
     begin
         if (!reset)
-            registers <= '{default: '0};
+            begin
+                for (i = 0; i < DEPTH - 1; i = i + 1)
+                    registers[i] <= '0;
+            end
         else if (write_en && rd_addr != 5'b0)
             registers[rd_addr] <= write_data;
     end
