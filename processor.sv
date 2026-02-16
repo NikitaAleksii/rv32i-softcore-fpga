@@ -133,8 +133,6 @@ module processor #(
         else begin
             state <= next_state;
             PC <= next_PC;
-
-
         end
     end
 
@@ -167,25 +165,38 @@ module processor #(
             next_state = EXECUTE;
         end
         EXECUTE : begin
-            // Implement JAL and JALR instructions
-            if (isJAL || isJALR) begin
-                reg_write_data = PC +4;
-                next_state = WRITE_BACK;
-            end
+            logic takeBranch;
 
-            // Implement ALUimm and ALUreg instructions
-            if (isALUimm || isALUreg)
-                next_state = WRITE_BACK;
-
-            // Write the output of ALU to the register file if it's not JAL or not JALR
-            reg_write_data = aluOut;
+            // Implement Branches
+            case(funct3)
+                3'b000 : takeBranch = (rs1_data == rs2_data); // BEQ
+                3'b001 : takeBranch = (rs1_data != rs2_data); // BNE
+                3'b100 : takeBranch = ($signed(rs1_data) < $signed(rs2_data)); // BLT
+                3'b101 : takeBranch = ($signed(rs1_data) >= $signed(rs2_data)); // BGE
+                3'b110 : takeBranch = (rs1_data < rs2_data); // BLTU
+                3'b111 : takeBranch = (rs1_data >= rs2_data); // BGEU
+                default: takeBranch = 1'b0;
+            endcase
 
             // Reconfigure nextPC based on the instruction
-            next_PC = isJAL ? PC + Jimm :
-                      isJALR ? rs1_data + Iimm :
-                      PC + 4;
+            if (isJAL) begin
+                next_PC = PC + Jimm;
+            end else if (isJALR) begin
+                next_PC = rs1_data + Iimm;
+            end else if (takeBranch & isBranch) begin
+                next_PC = PC + Bimm;
+            end else begin
+                next_PC = PC + 4;
+            end
 
-            next_state = MEMORY;
+            // Write-back value: PC + 4 for JAL and JALR instructions, aluOut for the rest
+            if (isJAL || isJALR) begin
+                reg_write_data = PC + 4;
+            end else begin
+                reg_write_data = aluOut;
+            end
+
+            next_state = WRITE_BACK;
 
         // Print OPCODES for the sake of simulation
         case (1'b1)
@@ -210,7 +221,7 @@ module processor #(
             // For the sake of simulation, stop at the last instuction 
             if (PC == 'd292)
                 next_state = HALT;
-        end
+            end
         default: next_state = HALT;
         endcase
     end
