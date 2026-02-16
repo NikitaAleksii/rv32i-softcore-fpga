@@ -191,6 +191,10 @@ module processor #(
                 // Write-back value: PC + 4 for JAL and JALR instructions, aluOut for the rest
                 if (isJAL || isJALR) begin
                     reg_write_data = PC + 4;
+                end else if (isLUI) begin
+                    reg_write_data = Uimm;
+                end else if (isAUIPC) begin
+                    reg_write_data = PC + Uimm;
                 end else begin
                     reg_write_data = aluOut;
                 end
