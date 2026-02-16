@@ -138,6 +138,7 @@ module processor #(
         end
     end
 
+    // Finite State Machine
     always_comb begin
         next_PC = PC;
         next_state = state;
@@ -166,6 +167,24 @@ module processor #(
             next_state = EXECUTE;
         end
         EXECUTE : begin
+            // Implement JAL and JALR instructions
+            if (isJAL || isJALR) begin
+                reg_write_data = PC +4;
+                next_state = WRITE_BACK;
+            end
+
+            // Implement ALUimm and ALUreg instructions
+            if (isALUimm || isALUreg)
+                next_state = WRITE_BACK;
+
+            // Write the output of ALU to the register file if it's not JAL or not JALR
+            reg_write_data = aluOut;
+
+            // Reconfigure nextPC based on the instruction
+            next_PC = isJAL ? PC + Jimm :
+                      isJALR ? rs1_data + Iimm :
+                      PC + 4;
+
             next_state = MEMORY;
 
         // Print OPCODES for the sake of simulation
@@ -186,9 +205,9 @@ module processor #(
             next_state = WRITE_BACK;
         end
         WRITE_BACK : begin
-            next_PC = PC + 4;
             next_state = FETCH;
 
+            // For the sake of simulation, stop at the last instuction 
             if (PC == 'd292)
                 next_state = HALT;
         end
