@@ -55,43 +55,43 @@ module processor #(
 
     // Bram memory
     bram_sdp #(
-    .WIDTH(32), 
-    .DEPTH(128),
-    .INIT(MEM_INIT)
+        .WIDTH(32), 
+        .DEPTH(128),
+        .INIT(MEM_INIT)
     ) bram_inst (
-    .clock_write(clock),
-    .clock_read(clock),
-    .write_enable(write_enable),
-    .read_enable(read_enable),
-    .addr_write(PC[8:2]),       // since the depth = 128
-    .addr_read(PC[8:2]),
-    .data_in(write_data),
-    .data_out(instr)
+        .clock_write(clock),
+        .clock_read(clock),
+        .write_enable(write_enable),
+        .read_enable(read_enable),
+        .addr_write(PC[8:2]),       // since the depth = 128
+        .addr_read(PC[8:2]),
+        .data_in(write_data),
+        .data_out(instr)
     );
 
     // Decoder 
     decoder decoder_isnt (
-    .instr,
-    .isALUreg,
-    .isALUimm,
-    .isLoad,
-    .isStore,
-    .isLUI,
-    .isAUIPC,
-    .isJAL,
-    .isJALR,
-    .isSYSTEM,
-    .isBranch,
-    .rd,
-    .rs1,
-    .rs2,
-    .funct3,
-    .funct7,
-    .Iimm,
-    .Simm,
-    .Bimm,
-    .Uimm,
-    .Jimm
+        .instr,
+        .isALUreg,
+        .isALUimm,
+        .isLoad,
+        .isStore,
+        .isLUI,
+        .isAUIPC,
+        .isJAL,
+        .isJALR,
+        .isSYSTEM,
+        .isBranch,
+        .rd,
+        .rs1,
+        .rs2,
+        .funct3,
+        .funct7,
+        .Iimm,
+        .Simm,
+        .Bimm,
+        .Uimm,
+        .Jimm
     );
 
     // Register File
@@ -124,8 +124,7 @@ module processor #(
     );
 
     // Start on reset; otherwise, change states
-    always_ff @(posedge clock)
-    begin
+    always_ff @(posedge clock) begin
         if (reset) begin
             state <= INIT;
             PC <= 32'b0;
@@ -151,79 +150,79 @@ module processor #(
         reg_write_data = 32'b0;
 
         case(state)
-        HALT : begin
-            next_state = HALT;
-        end
-        INIT : begin
-            next_state = FETCH;
-        end
-        FETCH : begin
-            read_enable = 1;
-            next_state = DECODE;
-        end
-        DECODE : begin
-            next_state = EXECUTE;
-        end
-        EXECUTE : begin
-            logic takeBranch;
-
-            // Implement Branches
-            case(funct3)
-                3'b000 : takeBranch = (rs1_data == rs2_data); // BEQ
-                3'b001 : takeBranch = (rs1_data != rs2_data); // BNE
-                3'b100 : takeBranch = ($signed(rs1_data) < $signed(rs2_data)); // BLT
-                3'b101 : takeBranch = ($signed(rs1_data) >= $signed(rs2_data)); // BGE
-                3'b110 : takeBranch = (rs1_data < rs2_data); // BLTU
-                3'b111 : takeBranch = (rs1_data >= rs2_data); // BGEU
-                default: takeBranch = 1'b0;
-            endcase
-
-            // Reconfigure nextPC based on the instruction
-            if (isJAL) begin
-                next_PC = PC + Jimm;
-            end else if (isJALR) begin
-                next_PC = rs1_data + Iimm;
-            end else if (takeBranch & isBranch) begin
-                next_PC = PC + Bimm;
-            end else begin
-                next_PC = PC + 4;
-            end
-
-            // Write-back value: PC + 4 for JAL and JALR instructions, aluOut for the rest
-            if (isJAL || isJALR) begin
-                reg_write_data = PC + 4;
-            end else begin
-                reg_write_data = aluOut;
-            end
-
-            next_state = WRITE_BACK;
-
-        // Print OPCODES for the sake of simulation
-        case (1'b1)
-            isALUreg : $display("PC=%d ALUreg", PC);
-            isALUimm: $display("PC=%d ALUimm", PC);
-            isBranch : $display("PC=%d BRANCH", PC);
-            isJAL : $display("PC=%d JAL", PC);
-            isJALR : $display("PC=%d JALR", PC);
-            isAUIPC : $display("PC=%d AUIPC", PC);
-            isLUI : $display("PC=%d LUI", PC);
-            isLoad : $display("PC=%d LOAD", PC);
-            isStore : $display("PC=%d STORE", PC);
-            isSYSTEM : $display("PC=%d SYSTEM", PC);
-        endcase
-        end
-        MEMORY : begin
-            next_state = WRITE_BACK;
-        end
-        WRITE_BACK : begin
-            next_state = FETCH;
-
-            // For the sake of simulation, stop at the last instuction 
-            if (PC == 'd292)
+            HALT : begin
                 next_state = HALT;
             end
-        default: next_state = HALT;
+            INIT : begin
+                next_state = FETCH;
+            end
+            FETCH : begin
+                read_enable = 1;
+                next_state = DECODE;
+            end
+            DECODE : begin
+                next_state = EXECUTE;
+            end
+            EXECUTE : begin
+                logic takeBranch;
+
+                // Implement Branches
+                case(funct3)
+                    3'b000 : takeBranch = (rs1_data == rs2_data); // BEQ
+                    3'b001 : takeBranch = (rs1_data != rs2_data); // BNE
+                    3'b100 : takeBranch = ($signed(rs1_data) < $signed(rs2_data)); // BLT
+                    3'b101 : takeBranch = ($signed(rs1_data) >= $signed(rs2_data)); // BGE
+                    3'b110 : takeBranch = (rs1_data < rs2_data); // BLTU
+                    3'b111 : takeBranch = (rs1_data >= rs2_data); // BGEU
+                    default: takeBranch = 1'b0;
+                endcase
+
+                // Reconfigure nextPC based on the instruction
+                if (isJAL) begin
+                    next_PC = PC + Jimm;
+                end else if (isJALR) begin
+                    next_PC = rs1_data + Iimm;
+                end else if (takeBranch & isBranch) begin
+                    next_PC = PC + Bimm;
+                end else begin
+                    next_PC = PC + 4;
+                end
+
+                // Write-back value: PC + 4 for JAL and JALR instructions, aluOut for the rest
+                if (isJAL || isJALR) begin
+                    reg_write_data = PC + 4;
+                end else begin
+                    reg_write_data = aluOut;
+                end
+
+                next_state = WRITE_BACK;
+
+                // Print OPCODES for the sake of simulation
+                case (1'b1)
+                    isALUreg : $display("PC=%d ALUreg", PC);
+                    isALUimm: $display("PC=%d ALUimm", PC);
+                    isBranch : $display("PC=%d BRANCH", PC);
+                    isJAL : $display("PC=%d JAL", PC);
+                    isJALR : $display("PC=%d JALR", PC);
+                    isAUIPC : $display("PC=%d AUIPC", PC);
+                    isLUI : $display("PC=%d LUI", PC);
+                    isLoad : $display("PC=%d LOAD", PC);
+                    isStore : $display("PC=%d STORE", PC);
+                    isSYSTEM : $display("PC=%d SYSTEM", PC);
+                endcase
+            end
+            MEMORY : begin
+                next_state = WRITE_BACK;
+            end
+            WRITE_BACK : begin
+                next_state = FETCH;
+
+                // For the sake of simulation, stop at the last instuction 
+                if (PC == 'd292)
+                    next_state = HALT;
+            end
+            default: next_state = HALT;
         endcase
     end
-
+    
 endmodule
