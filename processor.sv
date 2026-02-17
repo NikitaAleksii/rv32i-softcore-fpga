@@ -52,6 +52,9 @@ module processor #(
 
     // ALU output
     logic [31:0] aluOut;
+    logic EQ; // Equal
+    logic LT; // Less than
+    logic LTU; // Less than unsigned
 
     // Bram memory
     bram_sdp #(
@@ -114,13 +117,17 @@ module processor #(
     alu #(
         .WIDTH(32)
     ) alu_inst (
+        .isBranch,
         .rs1_data,
         .rs2_data,
         .Iimm,
         .funct3,
         .funct7,
         .isALUreg,
-        .aluOut
+        .aluOut,
+        .EQ,
+        .LT,
+        .LTU
     );
 
     // Start on reset; otherwise, change states
@@ -168,12 +175,12 @@ module processor #(
 
                 // Implement Branches
                 case(funct3)
-                    3'b000 : takeBranch = (rs1_data == rs2_data); // BEQ
-                    3'b001 : takeBranch = (rs1_data != rs2_data); // BNE
-                    3'b100 : takeBranch = ($signed(rs1_data) < $signed(rs2_data)); // BLT
-                    3'b101 : takeBranch = ($signed(rs1_data) >= $signed(rs2_data)); // BGE
-                    3'b110 : takeBranch = (rs1_data < rs2_data); // BLTU
-                    3'b111 : takeBranch = (rs1_data >= rs2_data); // BGEU
+                    3'b000 : takeBranch = EQ; // BEQ
+                    3'b001 : takeBranch = !EQ; // BNE
+                    3'b100 : takeBranch = LT; // BLT
+                    3'b101 : takeBranch = !LT; // BGE
+                    3'b110 : takeBranch = LTU; // BLTU
+                    3'b111 : takeBranch = !LTU; // BGEU
                     default: takeBranch = 1'b0;
                 endcase
 
@@ -182,7 +189,7 @@ module processor #(
                     next_PC = PC + Jimm;
                 end else if (isJALR) begin
                     next_PC = rs1_data + Iimm;
-                end else if (takeBranch & isBranch) begin
+                end else if (takeBranch && isBranch) begin
                     next_PC = PC + Bimm;
                 end else begin
                     next_PC = PC + 4;
