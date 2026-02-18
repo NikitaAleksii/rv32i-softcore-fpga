@@ -27,6 +27,8 @@ module processor #(
     logic write_enable = 0;
     logic read_enable = 0;
     logic [31:0] write_data = 0;
+    logic [31:0] mem_addr;
+    logic [31:0] mem_data;
 
     // Instruction
     logic [31:0] instr;
@@ -66,10 +68,10 @@ module processor #(
         .clock_read(clock),
         .write_enable(write_enable),
         .read_enable(read_enable),
-        .addr_write(PC[8:2]),       // since the depth = 128
-        .addr_read(PC[8:2]),
+        .addr_write(mem_addr[8:2]),      // Use the same memory address for read/write
+        .addr_read(mem_addr[8:2]),       // Use the same memory address for read/write
         .data_in(write_data),
-        .data_out(instr)
+        .data_out(mem_data)              // Use memory for both instuctions and data
     );
 
     // Decoder 
@@ -165,9 +167,11 @@ module processor #(
             end
             FETCH : begin
                 read_enable = 1;
+                mem_addr = PC;
                 next_state = DECODE;
             end
             DECODE : begin
+                instr = mem_data;
                 next_state = EXECUTE;
             end
             EXECUTE : begin
@@ -206,7 +210,13 @@ module processor #(
                     reg_write_data = aluOut;
                 end
 
-                next_state = WRITE_BACK;
+                // If either Load or Store is asserted, go to MEMORY; otherwise, go to WRITE_BACK
+                if (isLoad || isStore) begin
+                    next_state = MEMORY;
+                end
+                else begin
+                    next_state = WRITE_BACK;
+                end
 
                 // Print OPCODES for the sake of simulation
                 case (1'b1)
@@ -223,6 +233,32 @@ module processor #(
                 endcase
             end
             MEMORY : begin
+                logic [31:0] loadstore_addr; // Address of the data to be loaded
+                logic [31:0] LOAD_data; // Data to be loaded
+                logic [15:0] LOAD_halfword; // Half word
+                logic [7:0] LOAD_byte; // Byte
+
+                loadstore_addr = rs1_data + Iimm;
+                mem_addr = loadstore_addr;
+
+                if (isLoad) begin
+                    read_enable = 1;
+                    
+                    LOAD_halfword = loadstore_addr[1] ? mem_data[31:16] : mem_data[15:0];
+                    LOAD_byte = loadstore_addr[0] ? mem_data[15:8] : mem_data[7:0];
+
+                    case (funct3)
+                        3'b000 : LOAD_data = {{24{LOAD_byte[7]}}, LOAD_byte}; // LB (sign-extend)
+                        3'b001 : LOAD_data = {{16{LOAD_halfword[15]}}, LOAD_halfword}; // LH (sign-extend)
+                        3'b010 : LOAD_data = mem_data; // LW
+                        3'b100 : LOAD_data = {24'b0, LOAD_byte}; // LBU (zero-extend)
+                        3'b101 : LOAD_byte = {16'b0, LOAD_halfword}; // LHU (zero-extend)
+                        default : LOAD_byte = 32'b0;
+                    endcase
+                    reg_write_data = LOAD_byte;
+                end else begin
+                    write_enable = 1;
+                end
                 next_state = WRITE_BACK;
             end
             WRITE_BACK : begin
