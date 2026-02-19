@@ -234,34 +234,41 @@ module processor #(
             end
             MEMORY : begin
                 logic [31:0] loadstore_addr; // Address of the data to be loaded
-                logic [31:0] LOAD_data; // Data to be loaded
-                logic [15:0] LOAD_halfword; // Half word
-                logic [7:0] LOAD_byte; // Byte
+                logic [31:0] loadstore_data; // Data to be loaded
+                logic [15:0] loadstore_halfword; // Half word
+                logic [7:0] loadstore_byte; // Byte
 
-                loadstore_addr = rs1_data + Iimm;
+                loadstore_addr = rs1_data + (isStore ? Simm : Iimm);
                 mem_addr = loadstore_addr;
 
                 if (isLoad) begin
                     read_enable = 1;
                     
-                    LOAD_halfword = loadstore_addr[1] ? mem_data[31:16] : mem_data[15:0];
-                    LOAD_byte = loadstore_addr[0] ? mem_data[15:8] : mem_data[7:0];
+                    loadstore_halfword = loadstore_addr[1] ? mem_data[31:16] : mem_data[15:0];
+                    loadstore_byte = loadstore_addr[0] ? loadstore_halfword[15:8] : loadstore_halfword[7:0];
 
                     case (funct3)
-                        3'b000 : LOAD_data = {{24{LOAD_byte[7]}}, LOAD_byte}; // LB (sign-extend)
-                        3'b001 : LOAD_data = {{16{LOAD_halfword[15]}}, LOAD_halfword}; // LH (sign-extend)
-                        3'b010 : LOAD_data = mem_data; // LW
-                        3'b100 : LOAD_data = {24'b0, LOAD_byte}; // LBU (zero-extend)
-                        3'b101 : LOAD_byte = {16'b0, LOAD_halfword}; // LHU (zero-extend)
-                        default : LOAD_byte = 32'b0;
+                        3'b000 : loadstore_data = {{24{loadstore_byte[7]}}, loadstore_byte}; // LB (sign-extend)
+                        3'b001 : loadstore_data = {{16{loadstore_halfword[15]}}, loadstore_halfword}; // LH (sign-extend)
+                        3'b010 : loadstore_data = mem_data; // LW
+                        3'b100 : loadstore_data = {24'b0, loadstore_byte}; // LBU (zero-extend)
+                        3'b101 : loadstore_data = {16'b0, loadstore_halfword}; // LHU (zero-extend)
+                        default : loadstore_data = 32'b0;
                     endcase
-                    reg_write_data = LOAD_byte;
+                    reg_write_data = loadstore_data;
                 end else begin
                     write_enable = 1;
+                    mem_addr = loadstore_addr;
+                    write_data = loadstore_data;
                 end
                 next_state = WRITE_BACK;
             end
             WRITE_BACK : begin
+                // Write to registers
+                if (isALUreg || isALUimm || isLUI || isAUIPC || isJAL || isJALR || isLoad) begin
+                    reg_write_en = 1;
+                end
+                
                 next_state = FETCH;
 
                 // For the sake of simulation, stop at the last instuction 
