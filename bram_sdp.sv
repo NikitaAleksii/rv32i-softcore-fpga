@@ -11,10 +11,15 @@ module bram_sdp #(
     ) (
     input logic clock_write,
     input logic clock_read,
+
     input logic write_enable,
     input logic read_enable,
+
+    input logic [3:0] mem_mask_write,
+
     input logic [ADDR_WIDTH-1:0] addr_write,
     input logic [ADDR_WIDTH-1:0] addr_read,
+
     input logic [WIDTH-1:0] data_in,
     output logic [WIDTH-1:0] data_out
 );
@@ -32,7 +37,12 @@ module bram_sdp #(
 
     // Port A: Sync Write
     always_ff @(posedge clock_write) begin
-        if (write_enable) memory[addr_write] <= data_in;
+        if (write_enable) begin
+            if(mem_mask_write[0]) memory[addr_write][ 7:0 ] <= data_in[ 7:0 ];
+            if(mem_mask_write[1]) memory[addr_write][15:8 ] <= data_in[15:8 ];
+            if(mem_mask_write[2]) memory[addr_write][23:16] <= data_in[23:16];
+            if(mem_mask_write[3]) memory[addr_write][31:24] <= data_in[31:24];
+        end
     end
 
     // Port B: Sync Read
