@@ -256,6 +256,11 @@ module processor #(
                     state <= HALT; 
                 end
                 INIT: begin
+`ifdef SIMULATION
+                    $display("=====================================");
+                    $display("%-20s %-s", "PROGRAM COUNTER", "INSTRUCTION TYPE");
+                    $display("=====================================");
+`endif 
                     state <= FETCH;
                 end
                 FETCH: begin
@@ -321,16 +326,16 @@ module processor #(
 `ifdef SIMULATION
                 // Output the program counter and the type of an operation
                 case (1'b1)
-                    isALUreg : $display("PC=%d ALUreg", PC);
-                    isALUimm: $display("PC=%d ALUimm", PC);
-                    isBranch : $display("PC=%d BRANCH", PC);
-                    isJAL : $display("PC=%d JAL", PC);
-                    isJALR : $display("PC=%d JALR", PC);
-                    isAUIPC : $display("PC=%d AUIPC", PC);
-                    isLUI : $display("PC=%d LUI", PC);
-                    isLoad : $display("PC=%d LOAD", PC);
-                    isStore : $display("PC=%d STORE", PC);
-                    isSYSTEM : $display("PC=%d SYSTEM", PC);
+                    isALUreg : $display("%-20s %-s", $sformatf("PC=  %d", PC), "ALUreg");
+                    isALUimm : $display("%-20s %-s", $sformatf("PC=  %d", PC), "ALUimm"); 
+                    isBranch : $display("%-20s %-s", $sformatf("PC=  %d", PC), "BRANCH"); 
+                    isJAL : $display("%-20s %-s", $sformatf("PC=  %d", PC), "JAL"); 
+                    isJALR : $display("%-20s %-s", $sformatf("PC=  %d", PC), "JALR"); 
+                    isAUIPC : $display("%-20s %-s", $sformatf("PC=  %d", PC), "AUIPC"); 
+                    isLUI : $display("%-20s %-s", $sformatf("PC=  %d", PC), "LUI"); 
+                    isLoad : $display("%-20s %-s", $sformatf("PC=  %d", PC), "LOAD"); 
+                    isStore : $display("%-20s %-s", $sformatf("PC=  %d", PC), "STORE"); 
+                    isSYSTEM : $display("%-20s %-s", $sformatf("PC=  %d", PC), "SYSTEM"); 
                 endcase
 `endif 
                 end
