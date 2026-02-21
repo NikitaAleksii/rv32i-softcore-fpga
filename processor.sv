@@ -1,12 +1,15 @@
 `default_nettype none
 
 module processor #(
-    parameter MEM_INIT = "memory.mem",
-    parameter RESET_ADDRESS = 32'h8000
+    parameter MEM_INIT = "memory.mem"
 ) (
     input logic clock,
     input logic reset
 );
+    // Set memory parameters
+    localparam MEM_DEPTH=4096;
+    localparam MEM_ADDR_WIDTH=$clog2(MEM_DEPTH);
+
     // Machine States
     typedef enum { 
         HALT,
@@ -24,19 +27,22 @@ module processor #(
     // Program counter
     logic [31:0] PC, next_PC;
 
-    // Jump and branch counters
+    // Jump and branch addresses
     logic [31:0] jump_target;
     logic [31:0] jumpr_target;
     logic [31:0] branch_target;
 
-    // Memory register
+    // Memory Registers
     logic mem_write_enable = 0;
     logic mem_read_enable = 0;
+
     logic [3:0] write_mask;
     logic [31:0] mem_write_data = 0;
-    logic [31:0] mem_data;
+
     logic [31:0] mem_read_addr;
     logic [31:0] mem_write_addr;
+
+    logic [31:0] mem_data;
 
     // Instruction
     logic [31:0] instr;
@@ -48,20 +54,20 @@ module processor #(
     // Register addresses
     logic [4:0] rd, rs1, rs2; 
 
-    // Function codes
+    // Register data
+    logic [31:0] rs1_data, rs2_data;
+    assign rs1_data = (rs1 == 5'b0) ? 0 : registers[rs1];
+    assign rs2_data = (rs2 == 5'b0) ? 0 : registers[rs2];
+
+    // Additional opcodes
     logic [2:0] funct3;
     logic [6:0] funct7;
 
-    // Immediates
+    // Immediates 
     logic [31:0] Iimm, Simm, Bimm, Uimm, Jimm;
 
     // Registers
     logic [31:0] registers [0:31]; 
-
-    // Register File Data
-    logic [31:0] rs1_data, rs2_data;
-    assign rs1_data = (rs1 == 5'b0) ? 0 : registers[rs1];
-    assign rs2_data = (rs2 == 5'b0) ? 0 : registers[rs2];
 
     logic reg_write_enable;
     logic [31:0] reg_write_data;
@@ -75,7 +81,7 @@ module processor #(
     // Bram memory
     bram_sdp #(
         .WIDTH(32), 
-        .DEPTH(128),
+        .DEPTH(MEM_DEPTH),
         .INIT(MEM_INIT)
     ) bram_inst (
         .clock_write(clock),
@@ -83,8 +89,8 @@ module processor #(
         .write_enable(mem_write_enable),
         .read_enable(mem_read_enable),
         .mem_mask_write(write_mask),
-        .addr_write(mem_write_addr[8:2]),   
-        .addr_read(mem_read_addr[8:2]),      
+        .addr_write(mem_write_addr[MEM_ADDR_WIDTH+1:2]),   
+        .addr_read(mem_read_addr[MEM_ADDR_WIDTH+1:2]),      
         .data_in(mem_write_data),
         .data_out(mem_data)              // Use memory for both instuctions and data
     );
@@ -131,14 +137,14 @@ module processor #(
         .LTU
     );
 
-    // Handle LOAD
+    // Handle LOAD by computing bytes and halfwords and assigning them to load data output
     logic [31:0] load_addr;
-    
+    assign load_addr = rs1_data + Iimm;
+
     logic [31:0] load_data;
+    
     logic [15:0] load_halfword;
     logic [7:0] load_byte;
-
-    assign load_addr = rs1_data + Iimm;
 
     assign load_halfword = load_addr[1] ? mem_data[31:16] : mem_data[15:0];
     assign load_byte = (load_addr[1:0] == 2'b00 ? mem_data[7:0] : (load_addr[1:0] == 2'b01 ? mem_data[15:8] : (load_addr[1:0] == 2'b10 ? mem_data[23:16] : mem_data[31:24])));
@@ -160,20 +166,20 @@ module processor #(
         endcase
     end
 
-    // Handle STORE
+    // Handle STORE by computing bytes and halfwords and assigning them to store data output
+    logic [31:0] store_addr;
+    assign store_addr = rs1_data + Simm;
+
     logic [31:0] store_data;
     logic [3:0] store_mask;
-
-    logic [31:0] store_addr;
 
     logic [15:0] store_halfword;
     logic [7:0] store_byte;
 
-    assign store_addr = rs1_data + Simm;
-
     assign store_halfword = rs2_data[15:0];
     assign store_byte = rs2_data[7:0];
 
+    // Use mask to store particular bits
     logic [3:0] halfword_mask;
     logic [3:0] byte_mask;
 
@@ -201,9 +207,9 @@ module processor #(
         endcase
     end
 
+    // Handle Branches
     logic takeBranch;
 
-    // Handle Branches
     always_comb begin
         case(funct3)
             3'b000 : takeBranch = EQ; // BEQ
@@ -216,7 +222,7 @@ module processor #(
         endcase
     end
 
-    // Finite state machine start on reset
+    // Finite state machine; starts on reset
     always_ff @(posedge clock) begin
         if (reset) begin
             // Reset Registers
@@ -235,12 +241,13 @@ module processor #(
             // Reset Memory Data
             mem_read_enable <= 1'b1;
             mem_write_enable <= 1'b0;
-            mem_write_data <= 32'b0;
+
             mem_write_addr <= 32'b0;
             mem_read_addr <= 32'b0;
+
+            mem_write_data <= 32'b0;
             write_mask <= 4'b0;
 
-            // Reset PC and set state to INIT
             PC <= 32'b0;
             state <= INIT;
         end else begin
@@ -257,16 +264,17 @@ module processor #(
                     state <= DECODE;
                 end
                 DECODE: begin
+                    // Decode happens here via decoder.sv
                     instr <= mem_data;
-
-                    jump_target <= PC + Jimm;
-                    jumpr_target <= rs1_data + Iimm;
-                    branch_target <= PC + Bimm;
-
                     state <= EXECUTE;
                 end
                 EXECUTE: begin
-                    // Set Write-backs 
+                    // Calculate targets for JAL, JALR, and branches
+                    jump_target = PC + Jimm;
+                    jumpr_target = (rs1_data + Iimm) & ~32'd1;
+                    branch_target = PC + Bimm;
+
+                    // Set Write-backs to registers
                     if (isJAL || isJALR) begin
                         reg_write_data <= PC + 4;
                         reg_write_enable <= 1'b1;
@@ -284,7 +292,7 @@ module processor #(
                         reg_write_enable <= 1'b0;
                     end
 
-                    // Reconfigure nextPC based on the instruction
+                    // Reconfigure PC based on the instruction
                     if (isJAL) begin
                         PC <= jump_target;
                     end else if (isJALR) begin
@@ -295,12 +303,15 @@ module processor #(
                         PC <= next_PC;
                     end
 
+                    // Read or write data
                     if (isLoad) begin 
                         mem_read_enable <= 1'b1;
                         mem_read_addr <= load_addr;
                     end else if (isStore) begin
                         mem_write_enable <= 1'b1;
+
                         mem_write_addr <= store_addr;
+
                         mem_write_data <= store_data;
                         write_mask <= store_mask;
                     end
@@ -308,6 +319,7 @@ module processor #(
                     state <= MEMORY;
                 
 `ifdef SIMULATION
+                // Output the program counter and the type of an operation
                 case (1'b1)
                     isALUreg : $display("PC=%d ALUreg", PC);
                     isALUimm: $display("PC=%d ALUimm", PC);
@@ -332,23 +344,25 @@ module processor #(
                     state <= WRITE_BACK;
                 end
                 WRITE_BACK: begin
-                    // Write to registers
+                    // Write back to a register
                     if (reg_write_enable && rd != 'b0) begin
                         registers[rd] <= reg_write_data;
                     end
-
+                    
+                    // Write loaded data to a register
                     if (isLoad && rd != 'b0) begin
                         registers[rd] <= load_data;
                     end
 
                     mem_read_enable <= 1'b1;
                     mem_read_addr <= PC;
+
                     reg_write_enable <= 1'b0;
+
                     state <= FETCH;
                 end
                 default: state <= FETCH;
             endcase
         end
     end
-    
 endmodule
