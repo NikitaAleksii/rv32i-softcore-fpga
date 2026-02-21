@@ -7,10 +7,10 @@ PACKAGE		?= tq144:4k
 PROGRAMMER	?= ./spi_flash_programmer.sh
 PCF_FILE	?= pinmap.pcf
 
-TOP			?= execution_tb
-TOP_TB		?= execution_tb
-MODULES		?= processor.sv bram_sdp.sv decoder.sv alu.sv register_file.sv
-MODULES_TB	?= execution_tb.sv 
+TOP			?= instructions_tb
+TOP_TB		?= instructions_tb
+MODULES		?= processor.sv bram_sdp.sv decoder.sv alu.sv
+MODULES_TB	?= instructions_tb.sv 
 
 # Use yosys to perform synthesis
 %.json : %.sv
