@@ -7,7 +7,8 @@
 module bram_sdp #(
     parameter WIDTH=8, 
     parameter DEPTH=256, 
-    parameter INIT=""
+    parameter INIT="",
+    parameter int ADDR_WIDTH = $clog2(DEPTH)
     ) (
     input logic clock_write,
     input logic clock_read,
@@ -23,8 +24,6 @@ module bram_sdp #(
     input logic [WIDTH-1:0] data_in,
     output logic [WIDTH-1:0] data_out
 );
-
-    localparam ADDR_WIDTH=$clog2(DEPTH);
 
     logic [WIDTH-1:0] memory [DEPTH];
 

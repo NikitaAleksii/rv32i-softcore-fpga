@@ -28,7 +28,7 @@ module alu #(
 
     // Select ALU inputs
     assign aluIn1 = rs1_data;
-    assign aluIn2 = isALUreg | isBranch ? rs2_data : Iimm;
+    assign aluIn2 = (isALUreg || isBranch) ? rs2_data : Iimm;
 
     // 33-bit subtraction with MSB as overflow detection
     assign aluMinus = {1'b0,aluIn1} - {1'b0,aluIn2};
@@ -45,7 +45,7 @@ module alu #(
             3'b011 : aluOut = {31'b0, LTU}; // SLTU
             3'b100 : aluOut = (aluIn1 ^ aluIn2); // XOR
             3'b101 : aluOut = funct7[5]? ($signed(aluIn1) >>> shamt) : (aluIn1 >> shamt); // SRL
-            3'b110 : aluOut = (aluIn1 || aluIn2); // OR
+            3'b110 : aluOut = (aluIn1 | aluIn2); // OR
             3'b111 : aluOut = (aluIn1 & aluIn2); // AND
             default: aluOut = {WIDTH{1'b0}};
         endcase
