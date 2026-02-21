@@ -1,7 +1,8 @@
 `default_nettype none
 
 module processor #(
-    parameter MEM_INIT = "memory.mem"
+    parameter MEM_INIT = "memory.mem",
+    parameter RESET_ADDRESS = 32'h8000
 ) (
     input logic clock,
     input logic reset
@@ -33,8 +34,9 @@ module processor #(
     logic mem_read_enable = 0;
     logic [3:0] write_mask;
     logic [31:0] mem_write_data = 0;
-    logic [31:0] mem_addr;
     logic [31:0] mem_data;
+    logic [31:0] mem_read_addr;
+    logic [31:0] mem_write_addr;
 
     // Instruction
     logic [31:0] instr;
@@ -81,8 +83,8 @@ module processor #(
         .write_enable(mem_write_enable),
         .read_enable(mem_read_enable),
         .mem_mask_write(write_mask),
-        .addr_write(mem_addr[8:2]),      // Use the same memory address for read/write
-        .addr_read(mem_addr[8:2]),       // Use the same memory address for read/write
+        .addr_write(mem_write_addr[8:2]),   
+        .addr_read(mem_read_addr[8:2]),      
         .data_in(mem_write_data),
         .data_out(mem_data)              // Use memory for both instuctions and data
     );
@@ -200,7 +202,7 @@ module processor #(
     end
 
     logic takeBranch;
-    
+
     // Handle Branches
     always_comb begin
         case(funct3)
@@ -234,10 +236,11 @@ module processor #(
             mem_read_enable <= 1'b1;
             mem_write_enable <= 1'b0;
             mem_write_data <= 32'b0;
-            mem_addr <= 32'b0;
+            mem_write_addr <= 32'b0;
+            mem_read_addr <= 32'b0;
+            write_mask <= 4'b0;
 
             // Reset PC and set state to INIT
-            next_PC <= 32'b0;
             PC <= 32'b0;
             state <= INIT;
         end else begin
@@ -294,10 +297,10 @@ module processor #(
 
                     if (isLoad) begin 
                         mem_read_enable <= 1'b1;
-                        mem_addr <= load_addr;
+                        mem_read_addr <= load_addr;
                     end else if (isStore) begin
                         mem_write_enable <= 1'b1;
-                        mem_addr <= store_addr;
+                        mem_write_addr <= store_addr;
                         mem_write_data <= store_data;
                         write_mask <= store_mask;
                     end
@@ -339,7 +342,7 @@ module processor #(
                     end
 
                     mem_read_enable <= 1'b1;
-                    mem_addr <= PC;
+                    mem_read_addr <= PC;
                     reg_write_enable <= 1'b0;
                     state <= FETCH;
                 end
