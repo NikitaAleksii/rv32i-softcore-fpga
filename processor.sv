@@ -27,11 +27,6 @@ module processor #(
     // Program counter
     logic [31:0] PC, next_PC;
 
-    // Jump and branch addresses
-    logic [31:0] jump_target;
-    logic [31:0] jumpr_target;
-    logic [31:0] branch_target;
-
     // Memory Registers
     logic mem_write_enable = 0;
     logic mem_read_enable = 0;
@@ -46,6 +41,15 @@ module processor #(
 
     // Instruction
     logic [31:0] instr;
+
+    // Handle instructions and target addresses
+    logic [31:0] fetched_instr;
+
+    logic [31:0] jump_target;
+    logic [31:0] jumpr_target;
+    logic [31:0] branch_target;
+
+    assign instr = (state == DECODE) ? mem_data : fetched_instr;
 
     // Instruction type outputs
     logic isALUreg, isALUimm, isLoad, isStore, isLUI, isAUIPC, isJAL;
@@ -138,74 +142,32 @@ module processor #(
     );
 
     // Handle LOAD by computing bytes and halfwords and assigning them to load data output
-    logic [31:0] load_addr;
-    assign load_addr = rs1_data + Iimm;
-
     logic [31:0] load_data;
-    
-    logic [15:0] load_halfword;
-    logic [7:0] load_byte;
+    logic [31:0] load_addr;
 
-    assign load_halfword = load_addr[1] ? mem_data[31:16] : mem_data[15:0];
-    assign load_byte = (load_addr[1:0] == 2'b00 ? mem_data[7:0] : (load_addr[1:0] == 2'b01 ? mem_data[15:8] : (load_addr[1:0] == 2'b10 ? mem_data[23:16] : mem_data[31:24])));
-
-    logic halfword_sign;
-    logic byte_sign;
-
-    assign halfword_sign = load_halfword[15];
-    assign byte_sign = load_byte[7];
-
-    always_comb begin
-        case (funct3) 
-            3'b000 : load_data = {{24{byte_sign}}, load_byte}; // LB (sign-extend)
-            3'b001 : load_data = {{16{halfword_sign}}, load_halfword}; // LH (sign-extend)
-            3'b010 : load_data = mem_data; // LW
-            3'b100 : load_data = {24'b0, load_byte}; // LBU (zero-extend)
-            3'b101 : load_data = {16'b0, load_halfword}; // LHU (zero-extend)
-            default : load_data = 32'b0;
-        endcase
-    end
+    load_helper load_helper_inst(
+        .rs1_data,
+        .Iimm,
+        .funct3,
+        .mem_data,
+        .load_data,
+        .load_addr
+    );
 
     // Handle STORE by computing bytes and halfwords and assigning them to store data output
-    logic [31:0] store_addr;
-    assign store_addr = rs1_data + Simm;
-
     logic [31:0] store_data;
+    logic [31:0] store_addr;
     logic [3:0] store_mask;
 
-    logic [15:0] store_halfword;
-    logic [7:0] store_byte;
-
-    assign store_halfword = rs2_data[15:0];
-    assign store_byte = rs2_data[7:0];
-
-    // Use mask to store particular bits
-    logic [3:0] halfword_mask;
-    logic [3:0] byte_mask;
-
-    assign halfword_mask = store_addr[1] ? 4'b1100 : 4'b0011;
-    assign byte_mask = (store_addr[1:0] == 2'b00 ? 4'b0001 : (store_addr[1:0] == 2'b01 ? 4'b0010 : (store_addr[1:0] == 2'b10 ? 4'b0100 : 4'b1000)));
-
-    always_comb begin
-        case(funct3)
-            3'b000 : begin 
-                store_data = {store_byte, store_byte, store_byte, store_byte}; // SB
-                store_mask = byte_mask;
-            end
-            3'b001 : begin
-                store_data = {store_halfword, store_halfword}; // SH
-                store_mask = halfword_mask;
-            end
-            3'b010 : begin
-                store_data = rs2_data; // SW
-                store_mask = 4'b1111;
-            end
-            default: begin
-                store_data = 32'b0;
-                store_mask = 4'b0000;
-            end
-        endcase
-    end
+    store_helper store_helper_inst(
+        .rs1_data,
+        .rs2_data,
+        .Simm,
+        .funct3,
+        .store_data,
+        .store_addr,
+        .store_mask
+    );
 
     // Handle Branches
     logic takeBranch;
@@ -226,20 +188,14 @@ module processor #(
     always_ff @(posedge clock) begin
         if (reset) begin
             // Reset Registers
-            registers[0] <= 32'b0; registers[1] <= 32'b0; registers[2] <= 32'b0; registers[3] <= 32'b0; 
-            registers[4] <= 32'b0; registers[5] <= 32'b0; registers[6] <= 32'b0; registers[7] <= 32'b0;
-            registers[8] <= 32'b0; registers[9] <= 32'b0; registers[10] <= 32'b0; registers[11] <= 32'b0;
-            registers[12] <= 32'b0; registers[13] <= 32'b0; registers[14] <= 32'b0; registers[15] <= 32'b0;
-            registers[16] <= 32'b0; registers[17] <= 32'b0; registers[18] <= 32'b0; registers[19] <= 32'b0;
-            registers[20] <= 32'b0; registers[21] <= 32'b0; registers[22] <= 32'b0; registers[23] <= 32'b0;
-            registers[24] <= 32'b0; registers[25] <= 32'b0; registers[26] <= 32'b0; registers[27] <= 32'b0;
-            registers[28] <= 32'b0; registers[29] <= 32'b0; registers[30] <= 32'b0; registers[31] <= 32'b0;
-
+            for (int i = 0; i < 32; i++)
+                registers[i] <= 0;
+            
             reg_write_enable <= 1'b0;
             reg_write_data <= 32'b0;
 
             // Reset Memory Data
-            mem_read_enable <= 1'b1;
+            mem_read_enable <= 1'b0;
             mem_write_enable <= 1'b0;
 
             mem_write_addr <= 32'b0;
@@ -261,6 +217,7 @@ module processor #(
                     $display("%-20s %-s", "PROGRAM COUNTER", "INSTRUCTION TYPE");
                     $display("=====================================");
 `endif 
+                    mem_read_enable <= 1'b1;
                     state <= FETCH;
                 end
                 FETCH: begin
@@ -270,15 +227,16 @@ module processor #(
                 end
                 DECODE: begin
                     // Decode happens here via decoder.sv
-                    instr <= mem_data;
+                    fetched_instr <= mem_data;
+            
+                    // Calculate targets for JAL, JALR, and branches
+                    jump_target <= PC + Jimm;
+                    jumpr_target <= (rs1_data + Iimm) & ~32'd1;
+                    branch_target <= PC + Bimm;
+
                     state <= EXECUTE;
                 end
                 EXECUTE: begin
-                    // Calculate targets for JAL, JALR, and branches
-                    jump_target = PC + Jimm;
-                    jumpr_target = (rs1_data + Iimm) & ~32'd1;
-                    branch_target = PC + Bimm;
-
                     // Set Write-backs to registers
                     if (isJAL || isJALR) begin
                         reg_write_data <= PC + 4;
