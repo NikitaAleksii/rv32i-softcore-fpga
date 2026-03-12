@@ -1,15 +1,22 @@
 `default_nettype none
 
 module processor #(
-    parameter MEM_INIT = "memory.mem"
+    parameter MEM_INIT = "memory.mem",
+    parameter MEM_DEPTH = 4096
 ) (
     input logic clock,
-    input logic reset
-);
-    // Set memory parameters
-    localparam MEM_DEPTH=4096;
-    localparam MEM_ADDR_WIDTH=$clog2(MEM_DEPTH);
+    input logic reset,
 
+    output logic mem_write_enable,
+    output logic mem_read_enable,
+
+    output logic [3:0] write_mask,
+    output logic [31:0] mem_write_data,
+    output logic [31:0] mem_write_addr,
+
+    output logic [31:0] mem_read_addr,
+    input logic [31:0] mem_data
+);
     // Machine States
     typedef enum { 
         HALT,
@@ -26,18 +33,6 @@ module processor #(
 
     // Program counter
     logic [31:0] PC, next_PC;
-
-    // Memory Registers
-    logic mem_write_enable = 0;
-    logic mem_read_enable = 0;
-
-    logic [3:0] write_mask;
-    logic [31:0] mem_write_data = 0;
-
-    logic [31:0] mem_read_addr;
-    logic [31:0] mem_write_addr;
-
-    logic [31:0] mem_data;
 
     // Instruction
     logic [31:0] instr;
@@ -81,23 +76,6 @@ module processor #(
     logic EQ; // Equal
     logic LT; // Less than
     logic LTU; // Less than unsigned
-
-    // Bram memory
-    bram_sdp #(
-        .WIDTH(32), 
-        .DEPTH(MEM_DEPTH),
-        .INIT(MEM_INIT)
-    ) bram_inst (
-        .clock_write(clock),
-        .clock_read(clock),
-        .write_enable(mem_write_enable),
-        .read_enable(mem_read_enable),
-        .mem_mask_write(write_mask),
-        .addr_write(mem_write_addr[MEM_ADDR_WIDTH+1:2]),   
-        .addr_read(mem_read_addr[MEM_ADDR_WIDTH+1:2]),      
-        .data_in(mem_write_data),
-        .data_out(mem_data)              // Use memory for both instuctions and data
-    );
 
     // Decoder 
     decoder decoder_isnt (
