@@ -47,17 +47,17 @@ module soc #(
     //  Write address bit[13] == 1           ->  RAM
     // ---------------------------------------------------------------------
 
-    logic sel_rom_rd = mem_read_enable && (mem_read_addr[31:14] == 18'b0)
+    wire sel_rom_rd = mem_read_enable && (mem_read_addr[31:14] == 18'b0)
                                        && (mem_read_addr[13] == 1'b0);
 
-    logic sel_ram_rd = mem_read_enable && (mem_read_addr[31:14] == 18'b0)
+    wire sel_ram_rd = mem_read_enable && (mem_read_addr[31:14] == 18'b0)
                                        && (mem_read_addr[13] == 1'b1);
 
-    logic sel_ram_wr = mem_write_enable && (mem_write_addr[31:14] == 18'b0)
+    wire sel_ram_wr = mem_write_enable && (mem_write_addr[31:14] == 18'b0)
                                        && (mem_write_addr[13] == 1'b1);
 
-    logic sel_uart_rd = mem_read_enable && (mem_read_addr[31:16] == 16'h1000);
-    logic sel_uart_wr = mem_write_enable && (mem_write_addr[31:16] == 16'h1000);
+    wire sel_uart_rd = mem_read_enable && (mem_read_addr[31:16] == 16'h1000);
+    wire sel_uart_wr = mem_write_enable && (mem_write_addr[31:16] == 16'h1000);
 
     //  ---------------------------------------------------------------------
     //  ROM 8KB, read-only, initialized from firmware.mem at synthesis

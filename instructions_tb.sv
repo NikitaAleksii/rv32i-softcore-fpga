@@ -21,11 +21,16 @@ module instructions_tb ();
     logic reset;
 
     soc #(
-        .MEM_DEPTH(4096),
-        .MEM_INIT(MEMORY_INIT)
+        .MEM_INIT("memory.mem"),
+        .ROM_DEPTH(2048),
+        .RAM_DEPTH(2048),
+        .BAUD_RATE(115_200),
+        .CLOCK_RATE(50_000_000)
     ) soc_inst (
         .clock,
-        .reset
+        .reset,
+        .uart_rx(1'b1),
+        .uart_tx()
     );
 
     // Helper methods
@@ -46,7 +51,7 @@ module instructions_tb ();
     endtask
 
     task automatic expect_mem(int addr, logic [31:0] expected, string message);
-        logic [31:0] found = soc_inst.bram_inst.memory[addr];
+        logic [31:0] found = soc_inst.ram_inst.memory[addr];
 
         if (found !== expected) begin
             $error("FAIL %-28s mem[%0d] expected=0x%08x got=0x%08x", message, addr, expected, found);
@@ -64,20 +69,20 @@ module instructions_tb ();
     endtask
 
     // Address helpers for data checks (we use x21 = 0x00002100 as base)
-    localparam int WORD_0 = 32'h00002100 >> 2; // 0x2100 / 4 = 0x840
-    localparam int WORD_4 = 32'h00002104 >> 2; // 0x841
-    localparam int WORD_8 = 32'h00002108 >> 2; // 0x842
+    localparam int WORD_0 = (32'h00002100 - 32'h00002000) >> 2;  // = 0x40 = 64
+    localparam int WORD_4 = (32'h00002104 - 32'h00002000) >> 2;  // = 0x41 = 65
+    localparam int WORD_8 = (32'h00002108 - 32'h00002000) >> 2;  // = 0x42 = 66
 
     initial begin
         $dumpfile("instructions_tb.vcd");
 
-        $dumpvars(0, soc_inst, soc_inst.bram_inst);
+        $dumpvars(0, soc_inst, soc_inst.rom_inst, soc_inst.ram_inst);
         // Give SOC a moment to load MEM_INIT
         repeat (10) @(posedge clock);
 
-        soc_inst.bram_inst.memory[WORD_0] = 32'h0000_0000;
-        soc_inst.bram_inst.memory[WORD_4] = 32'h0000_0000;
-        soc_inst.bram_inst.memory[WORD_8] = 32'h0000_0000;
+        soc_inst.ram_inst.memory[WORD_0] = 32'h0000_0000;
+        soc_inst.ram_inst.memory[WORD_4] = 32'h0000_0000;
+        soc_inst.ram_inst.memory[WORD_8] = 32'h0000_0000;
 
         // Apply reset
         @(negedge clock);
