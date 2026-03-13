@@ -22,8 +22,8 @@ module instructions_tb ();
 
     soc #(
         .MEM_INIT("memory.mem"),
-        .ROM_DEPTH(2048),
-        .RAM_DEPTH(2048),
+        .ROM_DEPTH(8192),
+        .RAM_DEPTH(8192),
         .BAUD_RATE(115_200),
         .CLOCK_RATE(50_000_000)
     ) soc_inst (
@@ -68,10 +68,10 @@ module instructions_tb ();
         end
     endtask
 
-    // Address helpers for data checks (we use x21 = 0x00002100 as base)
-    localparam int WORD_0 = (32'h00002100 - 32'h00002000) >> 2;  // = 0x40 = 64
-    localparam int WORD_4 = (32'h00002104 - 32'h00002000) >> 2;  // = 0x41 = 65
-    localparam int WORD_8 = (32'h00002108 - 32'h00002000) >> 2;  // = 0x42 = 66
+    // Address helpers for data checks (we use x21 = 0x00008100 as base)
+    localparam int WORD_0 = (32'h00008100 - 32'h00008000) >> 2;  // = 0x40 = 64
+    localparam int WORD_4 = (32'h00008104 - 32'h00008000) >> 2;  // = 0x41 = 65
+    localparam int WORD_8 = (32'h00008108 - 32'h00008000) >> 2;  // = 0x42 = 66
 
     initial begin
         $dumpfile("instructions_tb.vcd");
@@ -161,19 +161,19 @@ module instructions_tb ();
         // 19 AND   x20, x5, x6 => 37
         step(); expect_reg(20, 32'd37, "and x20, x5, x6");
 
-        // 20 LUI   x21, 0x2  => 0x00002000
-        step(); expect_reg(21, 32'h0000_2000, "lui x21, 0x2");
+        // 20 LUI   x21, 0x8  => 0x00008000
+        step(); expect_reg(21, 32'h0000_8000, "lui x21, 0x8");
 
-        // 21 ADDI  x21, x21, 0x100 => 0x00002100
-        step(); expect_reg(21, 32'h0000_2100, "addi x21, x21, 0x100");
+        // 21 ADDI  x21, x21, 0x100 => 0x00008100
+        step(); expect_reg(21, 32'h0000_8100, "addi x21, x21, 0x100");
 
-        // 22 SW    x11, 0(x21) -> mem[0x2100] = 0x0000007E
+        // 22 SW    x11, 0(x21) -> mem[0x8100] = 0x0000007E
         step(); expect_mem(WORD_0, 32'h0000_007E, "sw x11, 0(x21)");
 
-        // 23 SH    x11, 4(x21) -> mem[0x2104][15:0] = 0x007E
+        // 23 SH    x11, 4(x21) -> mem[0x8104][15:0] = 0x007E
         step(); expect_mem(WORD_4, 32'h0000_007E, "sh x11, 4(x21)");
 
-        // 24 SB    x12, 6(x21) -> mem[0x2106] byte = 0x2A => word 0x002A007E
+        // 24 SB    x12, 6(x21) -> mem[0x8106] byte = 0x2A => word 0x002A007E
         step(); expect_mem(WORD_4, 32'h002A_007E, "sb x12, 6(x21)");
 
         // 25 LW    x22, 0(x21) => 126
@@ -194,7 +194,7 @@ module instructions_tb ();
         // 30 LUI   x27, 0xFFFF8 => 0xFFFF8000
         step(); expect_reg(27, 32'hFFFF_8000, "lui x27, 0xFFFF8");
 
-        // 31 SW    x27, 8(x21) -> mem[0x2108] = 0xFFFF8000
+        // 31 SW    x27, 8(x21) -> mem[0x8108] = 0xFFFF8000
         step(); expect_mem(WORD_8, 32'hFFFF_8000, "sw x27, 8(x21)");
 
         // 32 LH    x28, 8(x21) => 0xFFFF8000 (-32768)

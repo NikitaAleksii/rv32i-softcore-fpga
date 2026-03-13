@@ -4,9 +4,9 @@
 // --------------------------------------------------------------------- 
 // Memory Map
 // 
-//  0x0000_0000 – 0x0000_1FFF    ROM  (8 KB, 2048 words)   read-only
+//  0x0000_0000 – 0x0000_7FFF    ROM  (32 KB, 8192 words)   read-only
 //                               .text, .rodata live here
-//  0x0000_2000 – 0x0000_3FFF   RAM  (8 KB, 2048 words)   read/write
+//  0x0000_8000 – 0x0000_FFFF   RAM  (32 KB, 8192 words)   read/write
 //                               .data, .bss, stack live here
 //
 //  0x1000_0000                  UART TX  (write byte)
@@ -16,8 +16,8 @@
 
 module soc #(
     parameter MEM_INIT="memory.mem",
-    parameter ROM_DEPTH=2048,
-    parameter RAM_DEPTH=2048,
+    parameter ROM_DEPTH=8192,
+    parameter RAM_DEPTH=8192,
     parameter BAUD_RATE = 115_200,
     parameter CLOCK_RATE = 50_000_000
 ) (
@@ -39,7 +39,7 @@ module soc #(
     // ---------------------------------------------------------------------
     // Address Decode
     // 
-    // Read Adress bit[13]:
+    // Read Adress bit[15]:
     //    0  ->  ROM   0x0000_0000 – 0x0000_1FFF
     //    1  ->  RAM   0x0000_2000 – 0x0000_3FFF
     //
@@ -47,14 +47,14 @@ module soc #(
     //  Write address bit[13] == 1           ->  RAM
     // ---------------------------------------------------------------------
 
-    wire sel_rom_rd = mem_read_enable && (mem_read_addr[31:14] == 18'b0)
-                                       && (mem_read_addr[13] == 1'b0);
+    wire sel_rom_rd = mem_read_enable && (mem_read_addr[31:16] == 16'b0)
+                                       && (mem_read_addr[15] == 1'b0);
 
-    wire sel_ram_rd = mem_read_enable && (mem_read_addr[31:14] == 18'b0)
-                                       && (mem_read_addr[13] == 1'b1);
+    wire sel_ram_rd = mem_read_enable && (mem_read_addr[31:16] == 16'b0)
+                                       && (mem_read_addr[15] == 1'b1);
 
-    wire sel_ram_wr = mem_write_enable && (mem_write_addr[31:14] == 18'b0)
-                                       && (mem_write_addr[13] == 1'b1);
+    wire sel_ram_wr = mem_write_enable && (mem_write_addr[31:16] == 16'b0)
+                                       && (mem_write_addr[15] == 1'b1);
 
     wire sel_uart_rd = mem_read_enable && (mem_read_addr[31:16] == 16'h1000);
     wire sel_uart_wr = mem_write_enable && (mem_write_addr[31:16] == 16'h1000);
@@ -150,7 +150,7 @@ module soc #(
              mem_read_addr_r[3:0] == 4'h4)      : mem_data = {30'b0, uart_rx_ready, uart_tx_busy};
             (mem_read_addr_r[31:16] == 16'h1000 &&
              mem_read_addr_r[3:0] == 4'h8)      : mem_data = {24'b0, uart_rx_data};
-            (mem_read_addr_r[13] == 1'b1)       : mem_data = ram_out;
+            (mem_read_addr_r[15] == 1'b1)       : mem_data = ram_out;
             default                             : mem_data = rom_out;
 
         endcase
