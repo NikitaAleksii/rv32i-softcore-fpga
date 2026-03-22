@@ -1,3 +1,5 @@
+`default_nettype none
+
 module uart #(
     parameter BAUD_RATE = 115_200,
     parameter CLOCK_RATE = 50_000_000,
@@ -30,8 +32,8 @@ module uart #(
     logic tx_fifo_read_enable;
     logic [7:0] tx_fifo_data;
 
-    logic rx_fifo_write_enablel
-    logic [7:0] tx_fifo_data;
+    logic rx_fifo_write_enable;
+    logic [7:0] rx_fifo_data;
 
     baudrate #(
         .BAUD_RATE(BAUD_RATE),
@@ -63,7 +65,7 @@ module uart #(
         .fifo_data(tx_fifo_data),
         .fifo_read_enable(tx_fifo_read_enable),
         .Tx(Tx),
-        .Tx_busy(Tx_busy)
+        .Tx_busy(tx_busy)
     );
 
    fifo #(

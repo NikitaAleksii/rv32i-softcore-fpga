@@ -10,12 +10,17 @@
 //                               .data, .bss, stack live here
 //
 //  0x1000_0000                  UART TX  (write byte)
-//  0x1000_0004                  UART status  bit[0]=Tx_busy  bit[1]=Rx_ready
+//  0x1000_0004                  UART status:
+//                                   bit[0] = tx_busy
+//                                   bit[1] = rx_empty   (no data to read)
+//                                   bit[2] = rx_full
+//                                   bit[3] = tx_empty
+//                                   bit[4] = tx_full    (do not write if set)
 //  0x1000_0008                  UART RX  (read byte, clears Rx_ready)
 // ---------------------------------------------------------------------
 
 module soc #(
-    parameter MEM_INIT="memory.mem",
+    parameter MEM_INIT="firmware.mem",
     parameter ROM_DEPTH=8192,
     parameter RAM_DEPTH=8192,
     parameter BAUD_RATE = 115_200,
@@ -40,11 +45,11 @@ module soc #(
     // Address Decode
     // 
     // Read Adress bit[15]:
-    //    0  ->  ROM   0x0000_0000 – 0x0000_1FFF
-    //    1  ->  RAM   0x0000_2000 – 0x0000_3FFF
+    //    0  ->  ROM   0x0000_0000 – 0x0000_7FFF
+    //    1  ->  RAM   0x0000_8000 – 0x0000_FFFF
     //
     //  Write address bits[31:16] == 0x1000  ->  UART
-    //  Write address bit[13] == 1           ->  RAM
+    //  Write address bit[15] == 1           ->  RAM
     // ---------------------------------------------------------------------
 
     wire sel_rom_rd = mem_read_enable && (mem_read_addr[31:16] == 16'b0)
@@ -110,11 +115,14 @@ module soc #(
     //  ---------------------------------------------------------------------
 
     logic uart_tx_busy;
-    logic uart_rx_ready;
+    logic uart_rx_empty;
+    logic uart_rx_full;
+    logic uart_tx_empty;
+    logic uart_tx_full;
     logic [7:0] uart_rx_data;
 
-    logic uart_rx_enable = sel_uart_rd && (mem_read_addr == 32'h1000_0008);
-    logic uart_tx_enable = sel_uart_wr && (mem_write_addr == 32'h1000_0000);
+    wire uart_rx_enable = sel_uart_rd && (mem_read_addr == 32'h1000_0008);
+    wire uart_tx_enable = sel_uart_wr && (mem_write_addr == 32'h1000_0000);
 
     uart #(
         .BAUD_RATE(BAUD_RATE),
@@ -123,13 +131,16 @@ module soc #(
         .clock(clock),
         .Rx(uart_rx),
         .Rx_enable(1'b1),
-        .ready_clear(uart_rx_enable),
-        .Rx_ready(uart_rx_ready),
-        .data_output(uart_rx_data),
-        .data_input(mem_write_data[7:0]),
-        .Tx_enable(uart_tx_enable),
         .Tx(uart_tx),
-        .Tx_busy(uart_tx_busy)
+        .tx_data(mem_write_data[7:0]),
+        .tx_write_enable(uart_tx_enable),
+        .tx_busy(uart_tx_busy),
+        .tx_full(uart_tx_full),
+        .tx_empty(uart_tx_empty),
+        .rx_data(uart_rx_data),
+        .rx_read_enable(uart_rx_enable),
+        .rx_full(uart_rx_full),
+        .rx_empty(uart_rx_empty)
     );
 
     // ---------------------------------------------------------------------
@@ -147,7 +158,7 @@ module soc #(
     always_comb begin
         case(1'b1)
             (mem_read_addr_r[31:16] == 16'h1000 &&
-             mem_read_addr_r[3:0] == 4'h4)      : mem_data = {30'b0, uart_rx_ready, uart_tx_busy};
+             mem_read_addr_r[3:0] == 4'h4)      : mem_data = {27'b0, uart_tx_full, uart_tx_empty, uart_rx_full, uart_rx_empty, uart_tx_busy};
             (mem_read_addr_r[31:16] == 16'h1000 &&
              mem_read_addr_r[3:0] == 4'h8)      : mem_data = {24'b0, uart_rx_data};
             (mem_read_addr_r[15] == 1'b1)       : mem_data = ram_out;
