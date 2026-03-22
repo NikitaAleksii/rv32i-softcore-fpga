@@ -1,11 +1,17 @@
+`default_nettype none
+
 module receiver (
+    input logic clock,
+
+    // RX FIFO
+    input logic fifo_full,
+    output logic fifo_write_enable,
+    output logic [7:0] fifo_data,
+
+    // UART Line
     input logic Rx,              // Serial input data
     input logic Rx_enable,
-    input logic ready_clear,
-    input logic clock,
-    input logic Rx_clock_enable,
-    output logic ready,
-    output logic [7:0] data_output
+    input logic Rx_clock_enable
 );
     // Initialize states
     typedef enum {
@@ -14,12 +20,6 @@ module receiver (
         Rx_STOP
     } state_t;
 
-    // Initialize ready and data signals
-    initial begin
-        ready <= 1'b0;
-        data_output <= 8'b0;
-    end
-
     // Initialize internal registers
     state_t state = Rx_START;
     logic [3:0] counter = 4'b0;
@@ -27,8 +27,8 @@ module receiver (
     logic [7:0] temporary_byte = 8'b0;
 
     always @(posedge clock) begin
-        if (ready_clear)
-            ready <= 1'b0;
+        fifo_write_enable <= 1'b0;
+
         if (Rx_clock_enable && Rx_enable) begin
             case(state)
                 Rx_START: begin
@@ -55,9 +55,11 @@ module receiver (
                 end
                 Rx_STOP: begin
                     if (counter == 15 || (counter >= 8 && !Rx)) begin
-                        data_output <= temporary_byte;
+                        if (!fifo_full) begin
+                            fifo_data <= temporary_byte;
+                            fifo_write_enable <= 1'b1;
+                        end
                         state <= Rx_START;
-                        ready <= 1'b1;
                         counter <= 0;
                     end else 
                         counter <= counter + 1;

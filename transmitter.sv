@@ -1,15 +1,20 @@
+`default_nettype none
+
 module transmitter (
-    input logic [7:0] data_input,
     input logic clock,
     input logic Tx_clock_enable,
-    input logic Tx_enable,
+
+    // TX FIFO
+    input logic [7:0] fifo_data,
+    input logic fifo_empty,
+    output logic fifo_read_enable,
+
+    // UART line
     output logic Tx,
     output logic Tx_busy
 );
     
-    initial begin
-        Tx <= 1'b1;
-    end
+    initial Tx <= 1'b1;
 
     typedef enum {
         Tx_IDLE,
@@ -26,12 +31,15 @@ module transmitter (
     assign Tx_busy = (state != Tx_IDLE);
 
     always @(posedge clock) begin
+        fifo_read_enable <= 1'b0;
+
         case (state)
             Tx_IDLE: begin
-                if (Tx_enable) begin
+                if (!fifo_empty) begin
+                    fifo_read_enable <= 1'b1;
                     state <= Tx_START;
                     bit_position <= 3'b0;
-                    temporary_byte <= data_input;
+                    temporary_byte <= fifo_data;
                 end
             end
             Tx_START: begin
