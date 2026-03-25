@@ -10,7 +10,7 @@ PCF_FILE	?= pinmap.pcf
 TOP			?= soc
 TOP_TB		?= instructions_tb
 MODULES		?= soc.sv processor.sv bram_sdp.sv decoder.sv alu.sv load_helper.sv store_helper.sv \
-			   uart.sv transmitter.sv baudrate.sv receiver.sv
+			   uart.sv transmitter.sv baudrate.sv receiver.sv fifo.sv
 MODULES_TB	?= instructions_tb.sv 
 
 # Use yosys to perform synthesis
