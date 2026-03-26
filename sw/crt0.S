@@ -4,6 +4,12 @@
 //                crt0 - C Runtime, file zero
 //                .S   - naming convention means that this file gets run through the C preprocessor first
 
+// Naming Conventions
+//      _s - start of a section
+//      _d - end of a section
+//      _lma_ - load memory address
+//      _global_pointer$ - GCC/ABI convention used for GP-relative addressing
+
 // Places code at the beginning
 .section .text.entry
 
