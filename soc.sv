@@ -121,7 +121,7 @@ module soc #(
     logic uart_tx_full;
     logic [7:0] uart_rx_data;
 
-    wire uart_rx_enable = sel_uart_rd && (mem_read_addr == 32'h1000_0008);
+    wire uart_rx_enable = mem_read_enable_r && (mem_read_addr_r == 32'h1000_0008);
     wire uart_tx_enable = sel_uart_wr && (mem_write_addr == 32'h1000_0000);
 
     uart #(
@@ -151,21 +151,21 @@ module soc #(
     // ---------------------------------------------------------------------
 
     logic [31:0] mem_read_addr_r;
+    logic mem_read_enable_r;
 
-    always_ff @(posedge clock)
-        mem_read_addr_r <= mem_read_addr;
-
-    always_comb begin
-        case(1'b1)
-            (mem_read_addr_r[31:16] == 16'h1000 &&
-             mem_read_addr_r[3:0] == 4'h4)      : mem_data = {27'b0, uart_tx_full, uart_tx_empty, uart_rx_full, uart_rx_empty, uart_tx_busy};
-            (mem_read_addr_r[31:16] == 16'h1000 &&
-             mem_read_addr_r[3:0] == 4'h8)      : mem_data = {24'b0, uart_rx_data};
-            (mem_read_addr_r[15] == 1'b1)       : mem_data = ram_out;
-            default                             : mem_data = rom_out;
-
-        endcase
+    always_ff @(posedge clock) begin
+        mem_read_addr_r   <= mem_read_addr;
+        mem_read_enable_r <= mem_read_enable;
     end
+
+    wire sel_uart_stat_rd = (mem_read_addr_r[31:16] == 16'h1000) && (mem_read_addr_r[3:0] == 4'h4);
+    wire sel_uart_rx_rd  = (mem_read_addr_r[31:16] == 16'h1000) && (mem_read_addr_r[3:0] == 4'h8);
+    wire sel_ram_rd_r    = (mem_read_addr_r[15] == 1'b1);
+
+    assign mem_data = sel_uart_stat_rd ? {27'b0, uart_tx_full, uart_tx_empty, uart_rx_full, uart_rx_empty, uart_tx_busy} :
+                      sel_uart_rx_rd   ? {24'b0, uart_rx_data} :
+                      sel_ram_rd_r     ? ram_out :
+                                         rom_out;
 
     //  ---------------------------------------------------------------------
     //  Processor

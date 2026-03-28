@@ -32,8 +32,8 @@ module fifo #(
     localparam PTR_WIDTH = $clog2(DEPTH);
 
     logic [WIDTH-1:0] memory [0:DEPTH-1];
-    logic [PTR_WIDTH:0] write_ptr;  // extra bit for empty/full distinction
-    logic [PTR_WIDTH:0] read_ptr;
+    logic [PTR_WIDTH:0] write_ptr = '0;  // extra bit for empty/full distinction
+    logic [PTR_WIDTH:0] read_ptr  = '0;
 
     // Status flags
     assign empty = (write_ptr == read_ptr);
