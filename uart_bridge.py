@@ -5,7 +5,7 @@ Socat is is a Unix command-line tool that creates bidirectional data relays betw
 
 Usage:
     Terminal #1: python3 uart_bridge.py
-    Terminal #2: picocom -b 115200 /tmp/uart_pty
+    Terminal #2: picocom -b 115200 --omap crlf --imap lfcrlf /tmp/uart_pty
     Terminal #3: vvp firmware_tb.vvp
 """
 
@@ -45,7 +45,7 @@ def setup_pty():
         pass
 
     # Creates a symlink. A symlink (symbolic link) is a file that just points to another file
-    os.symlink(slave_fd, PTY_LINK)
+    os.symlink(slave_name, PTY_LINK)
 
     return master_fd, slave_fd, slave_name
 
@@ -111,7 +111,7 @@ def main():
                 if file_size > sp_pos:
                     with open(SP_FILE, "rb") as f:
                         f.seek(sp_pos)  # jumps past already-read data
-                        data = os.read(file_size - sp_pos)
+                        data = f.read(file_size - sp_pos)
                         # reads only the new bytes and writes them to the PTY master
                         os.write(master_fd, data)
                         sp_pos = file_size
