@@ -41,13 +41,13 @@ module decoder (
     assign isStore  = (instr[6:0] == 7'b0100011);  // mem[rs1 + Simm] <- rs2
     assign isLUI    = (instr[6:0] == 7'b0110111);  // rd <- Uimm
     assign isAUIPC  = (instr[6:0] == 7'b0010111);  // rd <- PC + Uimm 
-    assign isJAL    = (instr[6:0] == 7'b1101111);  // rd <- PC+4; PC <- rs1 + Jimm
-    assign isJALR   = (instr[6:0] == 7'b1100111);  // rd <- PC+4; PC <- Iimm
+    assign isJAL    = (instr[6:0] == 7'b1101111);  // rd <- PC+4; PC <- PC + Jimm  (PC-relative jump)
+    assign isJALR   = (instr[6:0] == 7'b1100111);  // rd <- PC+4; PC <- (rs1 + Iimm) & ~1  (register-relative, clears LSB)
     assign isBranch = (instr[6:0] == 7'b1100011);  // if (rs1 OP rs2) PC <- PC + Bimm
     assign isSYSTEM = (instr[6:0] == 7'b1110011);  // special
     assign isEBREAK = isSYSTEM & (funct3 == 3'b000) & (rs2 == 5'b00001);
     assign isECALL  = isSYSTEM & (funct3 == 3'b000) & (rs2 == 5'b00000);
-    assign isCSR_RS = isSYSTEM & (funct3 == 3'b010);
+    assign isCSR_RS = isSYSTEM & (funct3 == 3'b010);  // CSRRS: rd <- CSR; CSR |= rs1
 
     // Decode register addresses
     assign rd = instr[11:7];

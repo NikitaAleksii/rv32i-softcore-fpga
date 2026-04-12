@@ -6,7 +6,7 @@ RV32I RISC-V softcore processor implemented in SystemVerilog.
 
 The SoC is composed of a processor core, block RAM for ROM and RAM, and a UART peripheral.
 
-The **processor** is a 6-stage FSM: `INIT → FETCH → DECODE → EXECUTE → MEMORY → WRITE_BACK`. Each instruction takes one pass through the pipeline. The decoder extracts opcodes, register addresses, and all immediate formats from the 32-bit instruction word. The ALU handles arithmetic, logic, shifts, and produces comparison flags for branches. Load and store helpers handle sub-word access - byte and halfword extraction, sign extension, and write mask generation.
+The **processor** is a 6-stage FSM: `INIT → FETCH → DECODE → EXECUTE → MEMORY → WRITE_BACK`. Each instruction takes one pass through the pipeline. Current CPI is **5**. The decoder extracts opcodes, register addresses, and all immediate formats from the 32-bit instruction word. The ALU handles arithmetic, logic, shifts, and produces comparison flags for branches. Load and store helpers handle sub-word access - byte and halfword extraction, sign extension, and write mask generation.
 
 The **UART** has independent TX and RX paths, each backed by a 16-entry FIFO. A baud rate generator produces clock enables at the correct rate for both paths. The transmitter and receiver are separate state machines that read from and write to their respective FIFOs.
 
