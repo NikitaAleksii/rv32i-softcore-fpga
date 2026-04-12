@@ -1,14 +1,10 @@
 module load_helper (
-    input logic [31:0] rs1_data,
-    input logic [31:0] Iimm,
     input logic [2:0] funct3,
     input logic [31:0] mem_data,
 
     output logic [31:0] load_data,
-    output logic [31:0] load_addr
+    input logic [31:0] load_addr
 );
-    assign load_addr = rs1_data + Iimm;
-
     logic [15:0] load_halfword;
     logic [7:0] load_byte;
 

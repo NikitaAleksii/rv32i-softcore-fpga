@@ -1,20 +1,15 @@
 module store_helper (
-    input logic [31:0] rs1_data,
-    input logic [31:0] rs2_data,
-    input logic [31:0] Simm,
     input logic [2:0] funct3,
-
+    input logic [31:0] store_word,
+    input logic [31:0] store_addr,
     output logic [31:0] store_data,
-    output logic [31:0] store_addr,
     output logic [3:0] store_mask
 );
-    assign store_addr = rs1_data + Simm;
-
     logic [15:0] store_halfword;
     logic [7:0] store_byte;
 
-    assign store_halfword = rs2_data[15:0];
-    assign store_byte = rs2_data[7:0];
+    assign store_halfword = store_word[15:0];
+    assign store_byte = store_word[7:0];
 
     // Use mask to store particular bits
     logic [3:0] halfword_mask;
@@ -34,7 +29,7 @@ module store_helper (
                 store_mask = halfword_mask;
             end
             3'b010 : begin
-                store_data = rs2_data; // SW
+                store_data = store_word; // SW
                 store_mask = 4'b1111;
             end
             default: begin
