@@ -321,6 +321,12 @@ module instructions_tb ();
         // step();
 
         $display("Passed all tests.");
+
+        $display("cycles=%0d  instret=%0d  CPI=%f",
+            soc_inst.processor_inst.cycles,
+            soc_inst.processor_inst.instructions_retired,
+            real'(soc_inst.processor_inst.cycles) / real'(soc_inst.processor_inst.instructions_retired));
+
         $finish;
         end
 endmodule

@@ -37,18 +37,20 @@ module processor #(
     // Instruction
     logic [31:0] instr;
 
+    assign instr = (state == DECODE) ? mem_data : fetched_instr;
+
     // Handle instructions and target addresses
     logic [31:0] fetched_instr;
 
     logic [31:0] jump_target;
     logic [31:0] jumpr_target;
     logic [31:0] branch_target;
-
-    assign instr = (state == DECODE) ? mem_data : fetched_instr;
-
+    
     // Instruction type outputs
     logic isALUreg, isALUimm, isLoad, isStore, isLUI, isAUIPC, isJAL;
     logic isJALR, isSYSTEM, isBranch;
+    logic isEBREAK, isECALL; 
+    logic isCSR_RS;
 
     // Register addresses
     logic [4:0] rd, rs1, rs2; 
@@ -90,6 +92,9 @@ module processor #(
         .isJALR,
         .isSYSTEM,
         .isBranch,
+        .isEBREAK,
+        .isECALL,
+        .isCSR_RS,
         .rd,
         .rs1,
         .rs2,
@@ -162,6 +167,28 @@ module processor #(
         endcase
     end
 
+    // Initialize CSR registers
+    logic [63:0] cycles;
+    logic [63:0] instructions_retired;
+
+    // Combinatorial logic to get CSR data
+    logic [31:0] csr_data;
+
+    always_comb begin
+        case(Iimm[11:0])
+            12'hC00:
+                csr_data = cycles[31:0];
+            12'hC80:
+                csr_data = cycles[63:32];
+            12'hC02:
+                csr_data = instructions_retired[31:0];
+            12'hC82:
+                csr_data = instructions_retired[63:32];
+            default:
+                csr_data = 32'h0;
+        endcase
+    end
+
     // Finite state machine; starts on reset
     always_ff @(posedge clock) begin
         if (reset) begin
@@ -184,7 +211,13 @@ module processor #(
 
             PC <= 32'b0;
             state <= INIT;
+
+            // Reset CSR
+            cycles <= 64'b0;
+            instructions_retired <= 64'b0;
         end else begin
+            cycles <= cycles + 1;
+
             case(state)
                 HALT: begin
                     state <= HALT; 
@@ -228,6 +261,9 @@ module processor #(
                     end else if (isALUreg || isALUimm) begin
                         reg_write_data <= aluOut;
                         reg_write_enable <= 1'b1;
+                    end else if (isCSR_RS) begin
+                        reg_write_data <= csr_data;
+                        reg_write_enable <= 1'b1;
                     end else begin
                         reg_write_data <= 32'b0;
                         reg_write_enable <= 1'b0;
@@ -243,6 +279,13 @@ module processor #(
                     end else begin
                         PC <= next_PC;
                     end
+
+`ifdef SIMULATION
+                    if (isEBREAK) begin
+                        $display("EBREAK encountered.");
+                        $finish;
+                    end
+`endif
 
                     // Read or write data
                     if (isLoad) begin 
@@ -294,6 +337,8 @@ module processor #(
                     if (isLoad && rd != 'b0) begin
                         registers[rd] <= load_data;
                     end
+
+                    instructions_retired <= instructions_retired + 1;
 
                     mem_read_enable <= 1'b1;
                     mem_read_addr <= PC;
