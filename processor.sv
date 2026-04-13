@@ -17,7 +17,7 @@ module processor #(
     output logic [31:0] mem_read_addr,
     input logic [31:0] mem_data
 );
-    localparam NOP = 32'b00000000000000000000000000010011; // addi x0, x0, 0
+    localparam NOP = 32'b0000000_00000_00000_000_00000_0110011; // addi x0, x0, 0
 
     // Machine States
     typedef enum { 
@@ -34,12 +34,15 @@ module processor #(
     state_t state;
 
     // Program counter
-    logic [31:0] f_PC, fd_PC, de_PC;
+    logic [31:0] f_PC, f_prev_PC;
+    logic [31:0] fd_PC;
+    logic [31:0] d_PC, de_PC;
     logic [31:0] fd_next_PC, de_next_PC, em_next_PC, mw_next_PC;
+    logic f_pending;
 
     // Instructions
     logic [31:0] d_instruction, de_instruction, em_instruction, mw_instruction;
-    assign d_instruction = mem_data;
+    assign d_instruction = mem_data;                                                // change it to pb_instruction
     
     // Instruction type outputs
     logic d_isALUreg, e_isALUreg;
@@ -85,7 +88,7 @@ module processor #(
     // Aliases for the pipeline registers (d_, de_, em_, mw_) so stage-local
     // logic can reference its own instruction by name rather than by boundary
     logic [31:0] d_effective_instruction, e_effective_instruction, m_effective_instruction, w_effective_instruction;
-    assign d_effective_instruction = d_instruction;
+    assign d_effective_instruction = ((flush_decode || pb_empty)) ? NOP : d_instruction;
     assign e_effective_instruction = de_instruction;
     assign m_effective_instruction = em_instruction;
     assign w_effective_instruction = mw_instruction;
@@ -145,6 +148,42 @@ module processor #(
         .Uimm(e_Uimm),
         .Jimm(e_Jimm)
     );
+
+    logic conflict_de, conflict_dm, conflict_dw;
+
+    conflict_checker de_register_checker_inst (
+        .R_instruction(d_effective_instruction),
+        .W_instruction(e_effective_instruction),
+        .conflict(conflict_de)
+    );
+
+    conflict_checker dm_register_checker_inst (
+        .R_instruction(d_effective_instruction),
+        .W_instruction(m_effective_instruction),
+        .conflict(conflict_dm)
+    );
+
+    conflict_checker dw_register_checker_inst (
+        .R_instruction(d_effective_instruction),
+        .W_instruction(w_effective_instruction),
+        .conflict(conflict_dw)
+    );
+
+    // Register value not yet updated
+    logic conflict_d_emw;
+    assign conflict_d_emw = (conflict_de || conflict_dm || conflict_dw);
+
+    // Fetch wants to read from memory. Write wants to read/write data from memory
+    logic conflict_fm;
+    assign conflict_fw = (em_isLoad || em_isStore);
+
+    // Fetch wants to read from memory. Write-back is writing a result to the register file
+    logic conflict_fw;
+    assign conflict_fw = mw_isLoad;
+
+    // Pipeline fetches instructions from the wrong address. By the time branch resolves in E, F and D have already grabbed two instructions
+    logic control_hazard;
+    assign control_hazard = (e_isJal || e_isJALR || (e_isBranch && e_takeBranch));
 
     // ALU output
     logic [31:0] e_aluOut;
@@ -275,6 +314,14 @@ module processor #(
                 e_csr_data = 32'h0;
         endcase
     end
+
+    // Flush flags
+    logic flush_decode, flush_execute;
+
+    // Prefetch buffer
+    localparam PREFETCH_BUFFER_DEPTH = 8;
+
+    
 
     // Finite state machine; starts on reset
     always_ff @(posedge clock) begin
