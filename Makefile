@@ -8,10 +8,10 @@ PROGRAMMER	?= ./spi_flash_programmer.sh
 PCF_FILE	?= pinmap.pcf
 
 TOP			?= soc
-TOP_TB		?= instructions_tb
-MODULES		?= soc.sv processor.sv bram_sdp.sv decoder.sv alu.sv load_helper.sv store_helper.sv \
-			   uart.sv transmitter.sv baudrate.sv receiver.sv fifo.sv
-MODULES_TB	?= instructions_tb.sv 
+TOP_TB		?= instructions_tb2
+MODULES		?= soc.sv processor3.sv bram_sdp.sv decoder.sv alu.sv load_helper.sv store_helper.sv \
+			   uart.sv transmitter.sv baudrate.sv receiver.sv fifo.sv conflict_checker.sv
+MODULES_TB	?= instructions_tb2.sv 
 
 # Use yosys to perform synthesis
 %.json : %.sv
@@ -27,6 +27,9 @@ MODULES_TB	?= instructions_tb.sv
 
 # Use Icarus to generate a simulator
 %_tb.vvp : %_tb.sv $(MODULES)
+	iverilog -g2012 -o $@ $^
+
+%_tb2.vvp : %_tb2.sv $(MODULES)
 	iverilog -g2012 -o $@ $^
 
 # Use Icarus to run the simulation

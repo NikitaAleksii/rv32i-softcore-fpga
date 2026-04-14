@@ -23,26 +23,21 @@ module processor #(
     typedef enum { 
         HALT,
         INIT,
-        FETCH,
-        DECODE,
-        EXECUTE,
-        MEMORY,
-        WRITE_BACK
+        RUN
     } state_t;
 
     // Current and next states
     state_t state;
 
     // Program counter
-    logic [31:0] f_PC, f_prev_PC;
-    logic [31:0] fd_PC;
+    logic [31:0] f_PC, f_prev_PC; // f_prev_PC lets Fetch undo a speculative PC advance
     logic [31:0] d_PC, de_PC;
     logic [31:0] fd_next_PC, de_next_PC, em_next_PC, mw_next_PC;
-    logic f_pending;
+    logic f_pending; // lock on fetch to make sure that there is no conflict between fetch and memory accesses since they share the same bus
 
     // Instructions
     logic [31:0] d_instruction, de_instruction, em_instruction, mw_instruction;
-    assign d_instruction = mem_data;                                                // change it to pb_instruction
+    assign d_instruction = pb_instruction;
     
     // Instruction type outputs
     logic d_isALUreg, e_isALUreg;
@@ -89,7 +84,7 @@ module processor #(
     // logic can reference its own instruction by name rather than by boundary
     logic [31:0] d_effective_instruction, e_effective_instruction, m_effective_instruction, w_effective_instruction;
     assign d_effective_instruction = ((flush_decode || pb_empty)) ? NOP : d_instruction;
-    assign e_effective_instruction = de_instruction;
+    assign e_effective_instruction = (flush_execute ? NOP : de_instruction);
     assign m_effective_instruction = em_instruction;
     assign w_effective_instruction = mw_instruction;
 
@@ -175,7 +170,7 @@ module processor #(
 
     // Fetch wants to read from memory. Write wants to read/write data from memory
     logic conflict_fm;
-    assign conflict_fw = (em_isLoad || em_isStore);
+    assign conflict_fm = (em_isLoad || em_isStore);
 
     // Fetch wants to read from memory. Write-back is writing a result to the register file
     logic conflict_fw;
@@ -183,7 +178,7 @@ module processor #(
 
     // Pipeline fetches instructions from the wrong address. By the time branch resolves in E, F and D have already grabbed two instructions
     logic control_hazard;
-    assign control_hazard = (e_isJal || e_isJALR || (e_isBranch && e_takeBranch));
+    assign control_hazard = (e_isJAL || e_isJALR || (e_isBranch && e_takeBranch));
 
     // ALU output
     logic [31:0] e_aluOut;
@@ -321,8 +316,31 @@ module processor #(
     // Prefetch buffer
     localparam PREFETCH_BUFFER_DEPTH = 8;
 
-    
+    logic [63:0] prefetch_buffer [PREFETCH_BUFFER_DEPTH];
+    logic [$clog2(PREFETCH_BUFFER_DEPTH)-1:0] pb_write;
+    logic [$clog2(PREFETCH_BUFFER_DEPTH)-1:0] pb_read;
+    logic [$clog2(PREFETCH_BUFFER_DEPTH)-1:9] pb_count; // arithmetic that tracks the net change in buffer occupancy each cycle
 
+    logic pb_full;
+    assign pb_full = (pb_count == PREFETCH_BUFFER_DEPTH);
+
+    logic pb_empty;
+    assign pb_empty = (pb_count == 0);
+
+    logic [31:0] pb_instruction;
+    assign pb_instruction = prefetch_buffer[pb_read][31:0];
+
+    logic [31:0] pb_pc;
+    assign pb_pc = prefetch_buffer[pb_read][63:32];
+    assign d_PC = pb_pc;
+
+    logic pb_produced;  // Asserted when the buffer successfully writes a new instruction
+    assign pb_produced = (f_pending && !conflict_fm && !conflict_fw && !pb_full);
+
+    logic pb_consumed;  // Asserted when the decoder successfully reads an instruction
+    assign pb_consumed = (!conflict_d_emw && !pb_empty);
+
+    
     // Finite state machine; starts on reset
     always_ff @(posedge clock) begin
         if (reset) begin
@@ -331,7 +349,7 @@ module processor #(
                 registers[i] <= 0;
             
             // Reset PC's
-            f_PC <= '0; fd_PC <= '0; de_PC <= '0;
+            f_PC <= '0; de_PC <= '0;
             fd_next_PC <= '0; de_next_PC <= '0; em_next_PC <= '0; mw_next_PC <= '0;
 
             // Flush pipeline with NOPs so no stale instruction retires during startup
@@ -380,8 +398,20 @@ module processor #(
             // Reset CSR
             cycles <= 64'b0;
             instructions_retired <= 64'b0;
+
+            // Reset flushes
+            flush_decode <= 0;
+            flush_execute <= 0;
+
+            f_pending <= 0;
+
+            pb_read <= '0; pb_write <= '0; pb_count <= '0;
         end else begin
             cycles <= cycles + 1;
+
+            // Reset since they last for one clock cycle
+            flush_decode <= 0;
+            flush_execute <= 0;
 
             case(state)
                 HALT: begin
@@ -394,36 +424,96 @@ module processor #(
                     $display("=====================================");
 `endif 
                     f_mem_read_enable <= 1'b1;
-                    state <= FETCH;
+
+                    f_pending <= 0;
+
+                    state <= RUN;
                 end
-                FETCH: begin
-                    f_mem_read_enable <= 1'b0;
+                RUN: begin
+`ifdef SIMULATION
+                    $display("FETCH");
 
-                    fd_next_PC <= (f_PC + 4);
-                    fd_PC <= f_PC;
+                    if (conflict_fm) begin
+                        $display("Structural Hazard Fetch-Memory : Memory Bus");
+                    end
 
-                    state <= DECODE;
-                end
-                DECODE: begin
-                    // Calculate targets for JAL, JALR, and branches
-                    de_jump_target <= fd_PC + d_Jimm;
-                    de_jumpr_target <= (registers[d_rs1] + d_Iimm) & ~32'd1;
-                    de_branch_target <= fd_PC + d_Bimm;
+                    if (conflict_fw) begin
+                        $display("Structural Hazard Fetch-WriteBack : Register File");
+                    end
+`endif 
+                    // Issue a new fetch request
+                    // If the bus is free and the buffer has room, advance the PC and issue a read for the next instruction
+                    if (!conflict_fm && !pb_full) begin
+                        f_prev_PC <= f_PC;
+                        f_PC <= f_PC + 4;
 
-                    de_adjusted_load_addr <= registers[d_rs1] + d_Iimm;
-                    de_adjusted_store_addr <= registers[d_rs1] + d_Simm;
+                        f_mem_read_addr <= f_PC + 4;
+                        f_mem_read_enable <= 1'b1;
 
-                    de_next_PC <= fd_next_PC;
-                    de_PC <= fd_PC;
+                        f_pending <= 1'b1;
+                    end 
+                    // If the bus is taken or buffer is full, reissue the same address without advancing
+                    else begin
+                        f_mem_read_addr <= f_PC;
+                        f_mem_read_enable <= 1'b1;
 
-                    de_rs1_data <= registers[d_rs1];
-                    de_rs2_data <= registers[d_rs2];
+                        f_pending <= 0;
+                    end
+                    
+                    // Handle the response from a pending request
+                    // If a response is ready and no conflicts, write the returned instruction into the buffer 
+                    if (f_pending) begin
+                        if (!conflict_fm && !conflict_fw && !pb_full) begin
+                            prefetch_buffer[pb_write] <= {f_prev_PC, mem_data};
 
-                    de_instruction <= d_effective_instruction;
+                            pb_write <= pb_write + 1;
+                            pb_count <= pb_count + pb_produced - pb_consumed;
+                        end 
+                        
+                        // If there is a conflict roll back
+                        else begin
+                            f_PC <= f_prev_PC; // undo PC
 
-                    state <= EXECUTE;
-                end
-                EXECUTE: begin
+                            f_mem_read_addr <= f_prev_PC; // retry from the same address
+                            f_mem_read_enable <= 1'b1;
+
+                            f_pending <= 0;
+                        end
+                    end
+
+`ifdef SIMULATION
+                    $display("DECODE");
+
+                    if (conflict_d_emw) begin
+                        $display("Data Hazard : Decode - Execute/Memory/WriteBack");
+                    end
+`endif 
+                    if (!conflict_d_emw && !pb_empty) begin
+                        // Consume from the prefetch buffer
+                        pb_read <= pb_read + 1;
+                        pb_count <= pb_count + pb_produced - pb_consumed;
+
+                        // Calculate targets for JAL, JALR, and branches
+                        de_jump_target <= d_PC + d_Jimm;
+                        de_jumpr_target <= (registers[d_rs1] + d_Iimm) & ~32'd1;
+                        de_branch_target <= d_PC + d_Bimm;
+
+                        de_adjusted_load_addr <= registers[d_rs1] + d_Iimm;
+                        de_adjusted_store_addr <= registers[d_rs1] + d_Simm;
+
+                        de_PC <= d_PC;
+
+                        de_rs1_data <= registers[d_rs1];
+                        de_rs2_data <= registers[d_rs2];
+
+                        de_instruction <= d_effective_instruction;
+                    end else begin
+                        de_instruction <= NOP;
+                    end
+
+`ifdef SIMULATION
+                    $display("EXECUTE");
+`endif 
                     // Set Write-backs to registers
                     if (e_isJAL || e_isJALR) begin
                         em_reg_write_data <= de_PC + 4;
@@ -436,7 +526,7 @@ module processor #(
                         em_reg_write_enable <= 1'b1;
                     end else if (e_isALUreg || e_isALUimm) begin
                         em_reg_write_data <= e_aluOut;
-                        em_reg_write_enable <= 1'b1;
+                        em_reg_write_enable <= (e_effective_instruction != NOP ? 1'b1 : 1'b0);
                     end else if (e_isCSR_RS) begin
                         em_reg_write_data <= e_csr_data;
                         em_reg_write_enable <= 1'b1;
@@ -447,31 +537,64 @@ module processor #(
 
                     // Reconfigure PC based on the instruction
                     if (e_isJAL) begin
-                        em_next_PC <= de_jump_target;
-                    end else if (e_isJALR) begin
-                        em_next_PC <= de_jumpr_target;
-                    end else if (e_isBranch && e_takeBranch) begin
-                        em_next_PC <= de_branch_target;
-                    end else begin
-                        em_next_PC <= de_next_PC;
-                    end
+                        f_PC <= de_jump_target;
 
-`ifdef SIMULATION
+                        pb_read <= 0; pb_write <= 0; pb_count <= 0;
+
+                        f_mem_read_addr <= de_jump_target;
+                        f_mem_read_enable <= 1'b1;
+
+                        f_pending <= 0;
+
+                        flush_decode <= 1;
+                        flush_execute <= 1;
+                    end else if (e_isJALR) begin
+                        f_PC <= de_jumpr_target;
+
+                        pb_read <= 0; pb_write <= 0; pb_count <= 0;
+
+                        f_mem_read_addr <= de_jumpr_target;
+                        f_mem_read_enable <= 1'b1;
+
+                        f_pending <= 0;
+
+                        flush_decode <= 1;
+                        flush_execute <= 1;
+                    end else if (e_isBranch && e_takeBranch) begin
+                        f_PC <= de_branch_target;
+
+                        pb_read <= 0; pb_write <= 0; pb_count <= 0;
+
+                        f_mem_read_addr <= de_branch_target;
+                        f_mem_read_enable <= 1'b1;
+
+                        f_pending <= 0;
+
+                        flush_decode <= 1;
+                        flush_execute <= 1;
+                    end 
+
+    `ifdef SIMULATION
                     if (e_isEBREAK) begin
                         $display("EBREAK encountered.");
-                        $finish;
+                //        $finish;
                     end
-`endif
+    `endif
 
                     // Read or write data
-                    if (e_isLoad) begin 
+                    if (e_isLoad) begin
                         em_mem_read_enable <= 1'b1;
                         em_mem_read_addr <= de_adjusted_load_addr;
+                        em_mem_write_enable <= 1'b0;
                     end else if (e_isStore) begin
                         em_mem_write_enable <= 1'b1;
                         em_mem_write_addr <= de_adjusted_store_addr;
                         em_mem_write_data <= e_store_data;
                         em_mem_write_mask <= e_store_mask;
+                        em_mem_read_enable <= 1'b0;
+                    end else begin
+                        em_mem_read_enable <= 1'b0;
+                        em_mem_write_enable <= 1'b0;
                     end
 
                     em_rd <= e_rd;
@@ -482,38 +605,30 @@ module processor #(
 
                     em_adjusted_load_addr <= de_adjusted_load_addr;
                     em_instruction <= e_effective_instruction;
-
-                    state <= MEMORY;
                 
 `ifdef SIMULATION
-                // Output the program counter and the type of an operation
-                case (1'b1)
-                    e_isALUreg : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "ALUreg");
-                    e_isALUimm : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "ALUimm"); 
-                    e_isBranch : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "BRANCH"); 
-                    e_isJAL : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "JAL"); 
-                    e_isJALR : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "JALR"); 
-                    e_isAUIPC : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "AUIPC"); 
-                    e_isLUI : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "LUI"); 
-                    e_isLoad : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "LOAD"); 
-                    e_isStore : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "STORE"); 
-                    e_isSYSTEM : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "SYSTEM"); 
-                endcase
+                    // Output the program counter and the type of an operation
+                    case (1'b1)
+                        e_isALUreg : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "ALUreg");
+                        e_isALUimm : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "ALUimm"); 
+                        e_isBranch : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "BRANCH"); 
+                        e_isJAL : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "JAL"); 
+                        e_isJALR : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "JALR"); 
+                        e_isAUIPC : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "AUIPC"); 
+                        e_isLUI : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "LUI"); 
+                        e_isLoad : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "LOAD"); 
+                        e_isStore : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "STORE"); 
+                        e_isSYSTEM : $display("%-20s %-s", $sformatf("PC=  %d", de_PC), "SYSTEM"); 
+                    endcase
 `endif 
-                end
-                MEMORY: begin
-                    if (em_isLoad) begin 
-                        em_mem_read_enable <= 1'b0;
-                    end else if (em_isStore) begin
-                        em_mem_write_enable <= 1'b0;
-                    end
 
+`ifdef SIMULATION
+                    $display("MEMORY");
+`endif 
                     mw_rd <= em_rd;
                     mw_funct3 <= em_funct3;
 
                     mw_isLoad <= em_isLoad;
-
-                    mw_next_PC <= em_next_PC;
 
                     mw_adjusted_load_addr <= em_adjusted_load_addr;
 
@@ -522,9 +637,10 @@ module processor #(
 
                     mw_instruction <= m_effective_instruction;
 
-                    state <= WRITE_BACK;
-                end
-                WRITE_BACK: begin
+`ifdef SIMULATION
+                    $display("WRITE-BACK");
+`endif 
+
                     // Write back to a register
                     if (mw_reg_write_enable && mw_rd != 'b0) begin
                         registers[mw_rd] <= mw_reg_write_data;
@@ -535,16 +651,11 @@ module processor #(
                         registers[mw_rd] <= w_load_data;
                     end
 
-                    f_mem_read_enable <= 1'b1;
-                    f_mem_read_addr <= mw_next_PC;
-                    f_PC <= mw_next_PC;
-
-                    mw_reg_write_enable <= 1'b0;
-
-                    instructions_retired <= instructions_retired + 1;
-                    state <= FETCH;
+                    if (w_effective_instruction != NOP) begin
+                        instructions_retired <= instructions_retired + 1;
+                    end
                 end
-                default: state <= FETCH;
+                default: state <= HALT;
             endcase
         end
     end
