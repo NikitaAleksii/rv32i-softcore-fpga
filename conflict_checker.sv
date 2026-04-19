@@ -23,7 +23,7 @@ module conflict_checker (
                      |(w_opcode == 7'b1101111) // JAL
                      |(w_opcode == 7'b1100111); // JALR
 
-    // Conflict if E is writing a result that D needs,
+    // Conflict if W writes a result that R needs,
     // and the destination is not x0
     assign conflict = writeReg && (w_rd != 5'b0) && (w_rd == r_rs1 || w_rd == r_rs2);
 endmodule
