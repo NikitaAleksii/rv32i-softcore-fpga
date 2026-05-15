@@ -85,3 +85,7 @@ UART status bits: `[0]` tx_busy, `[1]` rx_empty, `[2]` rx_full, `[3]` tx_empty, 
 | `pinmap.pcf` | FPGA pin constraints |
 | `Makefile` | Build system |
 | `sw/` | C firmware (see `sw/README.md`) |
+
+## Acknowledgement 
+
+I thank Dr. Hammurabi Mendes for his guidance throughout this project. Dr. Mendes provided his own implementations of some components, and I wrote my own implementations independently.
