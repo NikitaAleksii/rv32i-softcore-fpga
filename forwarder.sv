@@ -43,7 +43,7 @@ module forwarder(
         .conflict(conflict_dm)
     );
 
-    // DW branch hazard detector 
+    // DW data hazard detector 
     logic conflict_dw;
     conflict_checker dw_register_checker_inst (
         .R_instruction(d_instruction),
@@ -96,7 +96,7 @@ module forwarder(
             d_forward_rs1_data = d_rs1_data;
         end
 
-        // D stage W forwarding with rs2
+        // D stage forwarding with rs2
         if (conflict_de && d_instruction[24:20] == e_instruction[11:7]) begin
             d_forward_rs2_data = e_reg_write_data;
         end else if (conflict_dm && d_instruction[24:20] == m_instruction[11:7]) begin

@@ -13,7 +13,7 @@ module conflict_checker (
     assign w_opcode = W_instruction[6:0];
     assign w_rd = W_instruction[11:7];
 
-    // Check it W is writing to a register
+    // Check if W is writing to a register
     logic writeReg;
     assign writeReg = (w_opcode == 7'b0000011) // LOAD
                      |(w_opcode == 7'b0110011) // ALUreg

@@ -202,10 +202,6 @@ module processor #(
     logic conflict_fm;
     assign conflict_fm = (em_isLoad || em_isStore);
 
-    // Fetch wants to read from memory. Write-back is writing a result to the register file
-    logic conflict_fw;
-    assign conflict_fw = mw_isLoad;
-
     // Pipeline fetches instructions from the wrong address. By the time branch resolves in E, F and D have already grabbed two instructions
     logic control_hazard;
     assign control_hazard = (e_isJAL || e_isJALR || (e_isBranch && e_takeBranch));
@@ -302,11 +298,11 @@ module processor #(
     logic em_isStore;
 
     logic f_mem_read_enable, em_mem_read_enable;
-    logic [21:0] f_mem_read_addr, em_mem_read_addr;
+    logic [31:0] f_mem_read_addr, em_mem_read_addr;
     logic [31:0] em_mem_read_data;
 
     logic em_mem_write_enable;
-    logic [21:0] em_mem_write_addr;
+    logic [31:0] em_mem_write_addr;
     logic [31:0] em_mem_write_data;
     logic [3:0] em_mem_write_mask;
 
@@ -349,7 +345,7 @@ module processor #(
     logic [63:0] prefetch_buffer [PREFETCH_BUFFER_DEPTH];
     logic [$clog2(PREFETCH_BUFFER_DEPTH)-1:0] pb_write;
     logic [$clog2(PREFETCH_BUFFER_DEPTH)-1:0] pb_read;
-    logic [$clog2(PREFETCH_BUFFER_DEPTH)-1:9] pb_count; // arithmetic that tracks the net change in buffer occupancy each cycle
+    logic [$clog2(PREFETCH_BUFFER_DEPTH)-1:0] pb_count; // arithmetic that tracks the net change in buffer occupancy each cycle
 
     logic pb_full;
     assign pb_full = (pb_count == PREFETCH_BUFFER_DEPTH);
@@ -365,7 +361,7 @@ module processor #(
     assign d_PC = pb_pc;
 
     logic pb_produced;  // Asserted when the buffer successfully writes a new instruction
-    assign pb_produced = (f_pending && !conflict_fm && !conflict_fw && !pb_full);
+    assign pb_produced = (f_pending && !conflict_fm && !pb_full);
 
     logic pb_consumed;  // Asserted when the decoder successfully reads an instruction
     assign pb_consumed = (!conflict_d_emw && !pb_empty);
@@ -466,10 +462,6 @@ module processor #(
                     if (conflict_fm) begin
                         $display("Structural Hazard Fetch-Memory : Memory Bus");
                     end
-
-                    if (conflict_fw) begin
-                        $display("Structural Hazard Fetch-WriteBack : Register File");
-                    end
 `endif 
                     // Issue a new fetch request
                     // If the bus is free and the buffer has room, advance the PC and issue a read for the next instruction
@@ -493,7 +485,7 @@ module processor #(
                     // Handle the response from a pending request
                     // If a response is ready and no conflicts, write the returned instruction into the buffer 
                     if (f_pending) begin
-                        if (!conflict_fm && !conflict_fw && !pb_full) begin
+                        if (!conflict_fm && !pb_full) begin
                             prefetch_buffer[pb_write] <= {f_prev_PC, mem_data};
 
                             pb_write <= pb_write + 1;
